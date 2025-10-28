@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+"""
+Простой скрипт для отправки WhatsApp сообщений
+"""
+
+import os
+import requests
+import json
+from dotenv import load_dotenv
+import time
+
+# Загружаем переменные окружения
+load_dotenv(override=True)
+
+def send_whatsapp_message(recipient: str, message: str):
+    """
+    Отправляет сообщение в WhatsApp
+    
+    Args:
+        recipient (str): Номер телефона получателя
+        message (str): Текст сообщения
+    """
+    # Получаем данные из .env
+    profile_id = os.getenv("PROFILE_ID")
+    authorization = os.getenv("AUTHORIZATION")
+    
+    if not profile_id or not authorization:
+        print("""❌ Ошибка: PROFILE_ID или AUTHORIZATION не найдены в .env файле
+        Создайте файл .env с содержимым:
+        PROFILE_ID=ваш_profile_id
+        AUTHORIZATION=ваш_токен_авторизации
+        """)
+        return
+    
+    # URL для API
+    url = f"https://wappi.pro/api/sync/message/send?profile_id={profile_id}"
+    
+    # Заголовки запроса
+    headers = {
+        'accept': 'application/json',
+        'Authorization': authorization,
+        'Content-Type': 'application/json'
+    }
+    
+    # Данные для отправки
+    data = {
+        'body': message,
+        'recipient': recipient
+    }
+    
+    try:
+        print(f"📤 Отправляем сообщение на номер {recipient}...")
+        response = requests.post(url, headers=headers, json=data)
+        
+        if response.status_code == 200:
+            print("✅ Сообщение отправлено успешно!")
+            result = response.json()
+            print(f"Ответ API: {json.dumps(result, indent=2, ensure_ascii=False)}")
+        else:
+            print(f"❌ Ошибка API: {response.status_code}")
+            print(f"Ответ: {response.text}")
+            
+    except Exception as e:
+        print(f"❌ Ошибка при отправке: {e}")
+
+if __name__ == "__main__":
+    # Пример использования
+    recipient = "79242340969"
+    recipient = "79089732116"
+    import random
+
+    messages = [
+        "сперма",
+        "говно",
+        "чурка",
+        "хуевые ноги",
+        "маленький пенис",
+        "скучный",
+        "мелкий",
+        "гомно",
+        "крутой (не оч)",
+        "не крутой (оч)",
+    ]
+    
+    message = "Проверяю работу скрипта..."
+    send_whatsapp_message(recipient, message)
+
+    for i in range(50):
+        message = random.choice(messages)
+        send_whatsapp_message(recipient, f"киря - {message}") 
+        time.sleep(1)
