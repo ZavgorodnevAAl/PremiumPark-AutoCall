@@ -52,6 +52,35 @@ if errorlevel 1 (
     echo ✅ Зависимости уже установлены
 )
 
+REM Проверяем наличие и заполненность .env файла
+if not exist ".env" (
+    echo.
+    echo ⚠️  Файл .env не найден!
+    echo 📝 Запускаем настройку переменных окружения...
+    echo.
+    python setup_env.py
+    if errorlevel 1 (
+        echo ❌ Ошибка при настройке .env
+        pause
+        exit /b 1
+    )
+) else (
+    REM Проверяем, заполнен ли .env
+    python setup_env.py --check
+    if errorlevel 1 (
+        echo.
+        echo ⚠️  Файл .env не полностью заполнен!
+        echo 📝 Запускаем настройку переменных окружения...
+        echo.
+        python setup_env.py
+        if errorlevel 1 (
+            echo ❌ Ошибка при настройке .env
+            pause
+            exit /b 1
+        )
+    )
+)
+
 echo.
 echo 📱 Откроется браузер с веб-интерфейсом
 echo ⏹️  Для остановки нажмите Ctrl+C

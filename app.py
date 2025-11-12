@@ -42,6 +42,8 @@ if 'settings_saved' not in st.session_state:
     st.session_state.settings_saved = False
 if 'blacklist_updated' not in st.session_state:
     st.session_state.blacklist_updated = False
+if 'env_saved' not in st.session_state:
+    st.session_state.env_saved = False
 
 
 def save_messages(messages_dict):
@@ -77,6 +79,44 @@ def save_blacklist(blacklist_list):
         return True
     except Exception as e:
         st.error(f"Ошибка при сохранении: {e}")
+        return False
+
+
+def load_env():
+    """Загружает переменные из .env файла"""
+    env_file = os.path.join(os.path.dirname(__file__), '.env')
+    env_vars = {}
+    if os.path.exists(env_file):
+        try:
+            with open(env_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#') and '=' in line:
+                        key, value = line.split('=', 1)
+                        env_vars[key.strip()] = value.strip()
+        except Exception as e:
+            st.error(f"Ошибка при чтении .env: {e}")
+    return env_vars
+
+
+def save_env(env_vars):
+    """Сохраняет переменные в .env файл"""
+    env_file = os.path.join(os.path.dirname(__file__), '.env')
+    try:
+        with open(env_file, 'w', encoding='utf-8') as f:
+            f.write("# Настройки для API 1C\n")
+            f.write(f"LOGIN={env_vars.get('LOGIN', '')}\n")
+            f.write(f"PASSWORD={env_vars.get('PASSWORD', '')}\n")
+            f.write("\n")
+            f.write("# Настройки для WhatsApp API (wappi.pro)\n")
+            f.write(f"PROFILE_ID={env_vars.get('PROFILE_ID', '')}\n")
+            f.write(f"AUTHORIZATION={env_vars.get('AUTHORIZATION', '')}\n")
+            f.write("\n")
+            f.write("# Опционально: тестовый номер для тестовой отправки\n")
+            f.write(f"TEST_PHONE={env_vars.get('TEST_PHONE', '')}\n")
+        return True
+    except Exception as e:
+        st.error(f"Ошибка при сохранении .env: {e}")
         return False
 
 
@@ -129,7 +169,7 @@ st.markdown("---")
 st.sidebar.title("📋 Меню")
 page = st.sidebar.radio(
     "Выберите раздел:",
-    ["Главная", "Отправка рассылок", "Тестовая отправка", "Редактор шаблонов", "Настройки", "Черный список", "Статус планировщика"]
+    ["Главная", "Отправка рассылок", "Тестовая отправка", "Редактор шаблонов", "Настройки", "Черный список", "Настройки API", "Статус планировщика"]
 )
 
 # Главная страница
@@ -476,6 +516,102 @@ elif page == "Черный список":
                     st.info("Нет доступных водителей для добавления")
             else:
                 st.error("Не удалось загрузить данные о водителях")
+
+# Настройки API
+elif page == "Настройки API":
+    st.header("🔐 Настройки API")
+    
+    st.markdown("""
+    Здесь вы можете настроить данные для подключения к API 1C и WhatsApp API.
+    Эти настройки хранятся в файле `.env`.
+    """)
+    
+    # Показываем сообщение о сохранении, если оно было
+    if st.session_state.env_saved:
+        st.success("✅ **Настройки API успешно сохранены!**")
+        st.info("⚠️ Перезапустите приложение, чтобы изменения вступили в силу.")
+        st.session_state.env_saved = False
+        st.markdown("---")
+    
+    # Загружаем текущие настройки
+    env_vars = load_env()
+    
+    # Данные для API 1C
+    st.subheader("📋 Данные для API 1C")
+    st.caption("Логин и пароль для подключения к системе 1C")
+    
+    login = st.text_input(
+        "Логин",
+        value=env_vars.get('LOGIN', ''),
+        help="Логин для доступа к API 1C",
+        type="default"
+    )
+    
+    password = st.text_input(
+        "Пароль",
+        value=env_vars.get('PASSWORD', ''),
+        help="Пароль для доступа к API 1C",
+        type="password"
+    )
+    
+    st.markdown("---")
+    
+    # Данные для WhatsApp API
+    st.subheader("📱 Данные для WhatsApp API (wappi.pro)")
+    st.caption("Настройки для отправки сообщений через wappi.pro")
+    
+    profile_id = st.text_input(
+        "PROFILE_ID",
+        value=env_vars.get('PROFILE_ID', ''),
+        help="ID профиля в системе wappi.pro"
+    )
+    
+    authorization = st.text_input(
+        "AUTHORIZATION (токен)",
+        value=env_vars.get('AUTHORIZATION', ''),
+        help="Токен авторизации для wappi.pro",
+        type="password"
+    )
+    
+    st.markdown("---")
+    
+    # Тестовый номер
+    st.subheader("🧪 Тестовый номер (опционально)")
+    st.caption("Номер телефона для тестовой отправки сообщений")
+    
+    test_phone = st.text_input(
+        "TEST_PHONE",
+        value=env_vars.get('TEST_PHONE', ''),
+        help="Номер телефона в формате 79991234567 или +79991234567",
+        placeholder="79991234567"
+    )
+    
+    st.markdown("---")
+    
+    # Проверка заполненности обязательных полей
+    required_fields = ['LOGIN', 'PASSWORD', 'PROFILE_ID', 'AUTHORIZATION']
+    missing_fields = [field for field in required_fields if not env_vars.get(field)]
+    
+    if missing_fields:
+        st.warning(f"⚠️ Не заполнены обязательные поля: {', '.join(missing_fields)}")
+    
+    # Кнопка сохранения
+    if st.button("💾 Сохранить настройки API", type="primary", use_container_width=True):
+        new_env = {
+            'LOGIN': login,
+            'PASSWORD': password,
+            'PROFILE_ID': profile_id,
+            'AUTHORIZATION': authorization,
+            'TEST_PHONE': test_phone
+        }
+        
+        # Проверка обязательных полей
+        if not all([new_env.get(field) for field in required_fields]):
+            st.error("❌ Заполните все обязательные поля!")
+        else:
+            if save_env(new_env):
+                st.session_state.env_saved = True
+                st.rerun()
 
 # Редактор шаблонов
 elif page == "Редактор шаблонов":

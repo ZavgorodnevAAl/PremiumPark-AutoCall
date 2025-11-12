@@ -46,6 +46,33 @@ else
     echo "✅ Зависимости уже установлены"
 fi
 
+# Проверяем наличие и заполненность .env файла
+if [ ! -f ".env" ]; then
+    echo ""
+    echo "⚠️  Файл .env не найден!"
+    echo "📝 Запускаем настройку переменных окружения..."
+    echo ""
+    python3 setup_env.py
+    if [ $? -ne 0 ]; then
+        echo "❌ Ошибка при настройке .env"
+        exit 1
+    fi
+else
+    # Проверяем, заполнен ли .env
+    python3 setup_env.py --check
+    if [ $? -ne 0 ]; then
+        echo ""
+        echo "⚠️  Файл .env не полностью заполнен!"
+        echo "📝 Запускаем настройку переменных окружения..."
+        echo ""
+        python3 setup_env.py
+        if [ $? -ne 0 ]; then
+            echo "❌ Ошибка при настройке .env"
+            exit 1
+        fi
+    fi
+fi
+
 echo ""
 echo "📱 Откроется браузер с веб-интерфейсом"
 echo "⏹️  Для остановки нажмите Ctrl+C"
