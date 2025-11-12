@@ -23,6 +23,7 @@ def send_whatsapp_message(recipient: str, message: str):
     # Получаем данные из .env
     profile_id = os.getenv("PROFILE_ID")
     authorization = os.getenv("AUTHORIZATION")
+    print(profile_id, authorization)
     
     if not profile_id or not authorization:
         print("""❌ Ошибка: PROFILE_ID или AUTHORIZATION не найдены в .env файле
@@ -65,8 +66,11 @@ def send_whatsapp_message(recipient: str, message: str):
 
 if __name__ == "__main__":
     # Пример использования
-    recipient = "79242340969"
-    recipient = "79089732116"
+
+    # recipient = "79242340969"
+    # recipient = "79089732116"
+    recipient = "79990570617"
+
     import random
 
     messages = [
@@ -85,7 +89,7 @@ if __name__ == "__main__":
     message = "Проверяю работу скрипта..."
     send_whatsapp_message(recipient, message)
 
-    for i in range(50):
+    for i in range(2):
         message = random.choice(messages)
         send_whatsapp_message(recipient, f"киря - {message}") 
         time.sleep(1)

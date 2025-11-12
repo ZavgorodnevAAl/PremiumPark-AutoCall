@@ -1,60 +1,430 @@
+#!/usr/bin/env python3
+"""
+Автоматическая отправка напоминаний о задолженности по аренде авто через WhatsApp
+"""
+
 import os
 import requests
 import json
 import base64
 from dotenv import load_dotenv
+import schedule
+import time
+from datetime import datetime
+import sys
 
+# Загружаем переменные окружения
 load_dotenv(override=True)
 
+# Настройки для API 1C
 LOGIN = os.getenv('LOGIN')
 PASSWORD = os.getenv('PASSWORD')
 
+# Настройки для WhatsApp API
+PROFILE_ID = os.getenv("PROFILE_ID")
+AUTHORIZATION = os.getenv("AUTHORIZATION")
+
+# Тестовый номер для тестовой функции
+TEST_PHONE = os.getenv("TEST_PHONE", "")
+
 if not LOGIN or not PASSWORD:
-    print('Ошибка: не заданы LOGIN или PASSWORD в .env файле')
-    exit(1)
+    print('❌ Ошибка: не заданы LOGIN или PASSWORD в .env файле')
+    sys.exit(1)
 
-# Создаем заголовок авторизации с правильной кодировкой кириллицы
-credentials = f"{LOGIN}:{PASSWORD}"
-encoded_credentials = base64.b64encode(credentials.encode('utf-8')).decode('utf-8')
-headers = {
-    'Authorization': f'Basic {encoded_credentials}',
-    'Content-Type': 'application/json'
-}
+if not PROFILE_ID or not AUTHORIZATION:
+    print('❌ Ошибка: не заданы PROFILE_ID или AUTHORIZATION в .env файле')
+    sys.exit(1)
 
-# Получаем задолженности по аренде через POST /hs/Driver/v1/Get
-try:
+
+def normalize_phone(phone: str) -> str:
+    """
+    Нормализует номер телефона для отправки в WhatsApp
+    Убирает + и пробелы, оставляет только цифры
+    """
+    if not phone:
+        return ""
+    # Убираем все нецифровые символы кроме первой цифры
+    phone_clean = ''.join(filter(str.isdigit, phone))
+    return phone_clean
+
+
+def get_drivers():
+    """
+    Получает список водителей из API 1C
+    
+    Returns:
+        list: Список водителей с их данными
+    """
+    credentials = f"{LOGIN}:{PASSWORD}"
+    encoded_credentials = base64.b64encode(credentials.encode('utf-8')).decode('utf-8')
+    headers = {
+        'Authorization': f'Basic {encoded_credentials}',
+        'Content-Type': 'application/json'
+    }
+    
     url = 'https://1c.0nalog.com:1710/E-Global/hs/Driver/v1/Get'
-    response = requests.post(url, headers=headers, json={})
-    print(f'POST {url} -> Status code: {response.status_code}')
-    ff = []
-    c = []
-    if response.status_code == 200:
-        data = response.json()
-        with open('drivers_with_arenda.json', 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        print('Результат по аренде сохранён в drivers_with_arenda.json')
-        # Печатаем ФИО и баланс водителей с балансом меньше -1000
-        print('\n--- Водители с балансом меньше -1000 ---')
-        found = False
-        for d in data:
-            try:
-                balance = float(d.get('Balance', 0) or 0)
-                is_working = (str(d.get('Status', '')).lower() in ('работает')) and \
-                             d.get('NameConditionWork', '') != ''
-                skip = 'не блокировать' in d.get('FIO', '').lower() or \
-                       'не беспокоить' in d.get('FIO', '').lower()
-            except Exception:
-                balance = 0
-                is_working = False
-                skip = True
+    
+    try:
+        response = requests.post(url, headers=headers, json={}, timeout=30)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            print(f'❌ Ошибка при получении данных: {response.status_code}')
+            print(f'Ответ: {response.text[:200]}')
+            return []
+    except Exception as e:
+        print(f'❌ Ошибка при получении данных: {e}')
+        return []
 
-            if balance < -1000 and is_working and not skip:
-                fio = d.get('FIO', '')
-                print(f"{fio}: {balance}")
-                found = True
-        if not found:
-            print("Нет водителей с балансом меньше -1000.")
+
+def filter_drivers(drivers, balance_threshold: float):
+    """
+    Фильтрует водителей по балансу и статусу, исключая черный список
+    
+    Args:
+        drivers: Список водителей
+        balance_threshold: Порог баланса (например, 0 или -500)
+    
+    Returns:
+        list: Отфильтрованный список водителей
+    """
+    filtered = []
+    blacklist = load_blacklist()
+    
+    for driver in drivers:
+        try:
+            balance = float(driver.get('Balance', 0) or 0)
+            is_working = (str(driver.get('Status', '')).lower() == 'работает') and \
+                        driver.get('NameConditionWork', '') != ''
+            skip = 'не блокировать' in driver.get('FIO', '').lower() or \
+                   'не беспокоить' in driver.get('FIO', '').lower()
+            phone = driver.get('PhoneNumber', '')
+            phone_normalized = normalize_phone(phone)
+            
+            # Проверяем, не в черном списке ли номер
+            in_blacklist = phone_normalized in blacklist
+            
+            if balance < balance_threshold and is_working and not skip and phone and not in_blacklist:
+                filtered.append({
+                    'fio': driver.get('FIO', ''),
+                    'balance': balance,
+                    'phone': phone_normalized
+                })
+        except Exception:
+            continue
+    
+    return filtered
+
+
+def send_whatsapp_message(recipient: str, message: str) -> bool:
+    """
+    Отправляет сообщение в WhatsApp
+    
+    Args:
+        recipient (str): Номер телефона получателя (без +)
+        message (str): Текст сообщения
+    
+    Returns:
+        bool: True если сообщение отправлено успешно
+    """
+    if not recipient:
+        print("❌ Номер получателя не указан")
+        return False
+    
+    url = f"https://wappi.pro/api/sync/message/send?profile_id={PROFILE_ID}"
+    
+    headers = {
+        'accept': 'application/json',
+        'Authorization': AUTHORIZATION,
+        'Content-Type': 'application/json'
+    }
+    
+    data = {
+        'body': message,
+        'recipient': recipient
+    }
+    
+    try:
+        response = requests.post(url, headers=headers, json=data, timeout=30)
+        
+        if response.status_code == 200:
+            print(f"✅ Сообщение отправлено на {recipient}")
+            return True
+        else:
+            print(f"❌ Ошибка API для {recipient}: {response.status_code}")
+            print(f"Ответ: {response.text[:200]}")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Ошибка при отправке на {recipient}: {e}")
+        return False
+
+
+def load_messages():
+    """
+    Загружает шаблоны сообщений из файла
+    
+    Returns:
+        dict: Словарь с шаблонами сообщений
+    """
+    messages_file = os.path.join(os.path.dirname(__file__), 'messages.json')
+    try:
+        with open(messages_file, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"❌ Ошибка при загрузке шаблонов сообщений: {e}")
+        # Возвращаем шаблоны по умолчанию
+        return {
+            "morning": "Добрый день! Напоминаем про оплату аренды авто до 13:00, в случае просрочки платежа будет начислен штраф в размере 5% от суммы задолжености (ШТРАФ НАЧИСЛЯЕТСЯ АВТОМАТИЧЕСКИ), также после 15:00 система заблокирует автомобиль!",
+            "weekday_afternoon": "Добрый день! Необходимо срочно закрыть долг по аренде авто. В противном случае с 15:00, авто будет заблокирован!  Приносим свои извинения, если Вы уже произвели оплату.\n\nС уважением, Команда автопроката \"Premium Park\"\n\nтелефон для связи 89242320999",
+            "weekend_afternoon": "Добрый день! Необходимо срочно закрыть долг по аренде авто до 13:30 или авто будет заблокирован! Разблокировка авто возможна только до 16:30 в субботу и воскресенье, т.е. в рабочее время в выходные дни.  Приносим свои извинения, если Вы уже произвели оплату.\n\nС уважением, Команда автопроката \"Premium Park\"\n\nВ выходные дни вы можете звонить в отдел дебиторской задолженности по телефону +79241335400"
+        }
+
+
+def load_settings():
+    """
+    Загружает настройки из файла
+    
+    Returns:
+        dict: Словарь с настройками
+    """
+    settings_file = os.path.join(os.path.dirname(__file__), 'settings.json')
+    try:
+        with open(settings_file, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"❌ Ошибка при загрузке настроек: {e}")
+        # Возвращаем настройки по умолчанию
+        return {
+            "morning_balance_threshold": 0,
+            "afternoon_balance_threshold": -500
+        }
+
+
+def load_blacklist():
+    """
+    Загружает черный список из файла
+    
+    Returns:
+        list: Список номеров телефонов в черном списке (нормализованные)
+    """
+    blacklist_file = os.path.join(os.path.dirname(__file__), 'blacklist.json')
+    try:
+        with open(blacklist_file, 'r', encoding='utf-8') as f:
+            blacklist = json.load(f)
+            # Нормализуем все номера в черном списке
+            return [normalize_phone(phone) for phone in blacklist if phone]
+    except Exception as e:
+        print(f"❌ Ошибка при загрузке черного списка: {e}")
+        return []
+
+
+def send_morning_reminder():
+    """
+    Отправляет утреннее напоминание водителям с балансом меньше порога
+    """
+    settings = load_settings()
+    threshold = float(settings.get("morning_balance_threshold", 0))
+    
+    print(f"\n{'='*60}")
+    print(f"🌅 Утреннее напоминание - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"{'='*60}")
+    
+    drivers = get_drivers()
+    if not drivers:
+        print("❌ Не удалось получить данные о водителях")
+        return
+    
+    filtered_drivers = filter_drivers(drivers, balance_threshold=threshold)
+    
+    if not filtered_drivers:
+        print(f"✅ Нет водителей с балансом < {threshold}")
+        return
+    
+    messages = load_messages()
+    message = messages.get("morning", "")
+    
+    print(f"📤 Отправляем сообщения {len(filtered_drivers)} водителям (баланс < {threshold})...")
+    for driver in filtered_drivers:
+        print(f"  → {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']}")
+        send_whatsapp_message(driver['phone'], message)
+        time.sleep(1)  # Небольшая задержка между отправками
+    
+    print(f"✅ Утреннее напоминание завершено\n")
+
+
+def send_weekday_afternoon_reminder():
+    """
+    Отправляет напоминание в 13:00 в будние дни водителям с балансом меньше порога
+    """
+    settings = load_settings()
+    threshold = float(settings.get("afternoon_balance_threshold", -500))
+    
+    print(f"\n{'='*60}")
+    print(f"📅 Напоминание в будний день - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"{'='*60}")
+    
+    drivers = get_drivers()
+    if not drivers:
+        print("❌ Не удалось получить данные о водителях")
+        return
+    
+    filtered_drivers = filter_drivers(drivers, balance_threshold=threshold)
+    
+    if not filtered_drivers:
+        print(f"✅ Нет водителей с балансом < {threshold}")
+        return
+    
+    messages = load_messages()
+    message = messages.get("weekday_afternoon", "")
+    
+    print(f"📤 Отправляем сообщения {len(filtered_drivers)} водителям (баланс < {threshold})...")
+    for driver in filtered_drivers:
+        print(f"  → {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']}")
+        send_whatsapp_message(driver['phone'], message)
+        time.sleep(1)
+    
+    print(f"✅ Напоминание в будний день завершено\n")
+
+
+def send_weekend_afternoon_reminder():
+    """
+    Отправляет напоминание в обед по выходным водителям с балансом меньше порога
+    """
+    settings = load_settings()
+    threshold = float(settings.get("afternoon_balance_threshold", -500))
+    
+    print(f"\n{'='*60}")
+    print(f"🏖️ Напоминание в выходной день - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"{'='*60}")
+    
+    drivers = get_drivers()
+    if not drivers:
+        print("❌ Не удалось получить данные о водителях")
+        return
+    
+    filtered_drivers = filter_drivers(drivers, balance_threshold=threshold)
+    
+    if not filtered_drivers:
+        print(f"✅ Нет водителей с балансом < {threshold}")
+        return
+    
+    messages = load_messages()
+    message = messages.get("weekend_afternoon", "")
+    
+    print(f"📤 Отправляем сообщения {len(filtered_drivers)} водителям (баланс < {threshold})...")
+    for driver in filtered_drivers:
+        print(f"  → {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']}")
+        send_whatsapp_message(driver['phone'], message)
+        time.sleep(1)
+    
+    print(f"✅ Напоминание в выходной день завершено\n")
+
+
+def send_test_message(phone: str = None):
+    """
+    Тестовая функция для отправки сообщения на указанный номер
+    
+    Args:
+        phone (str): Номер телефона для теста (если не указан, берется из .env)
+    """
+    if not phone:
+        phone = TEST_PHONE
+    
+    if not phone:
+        print("❌ Не указан номер телефона для теста")
+        print("   Укажите номер в параметре функции или в .env как TEST_PHONE")
+        return
+    
+    phone_normalized = normalize_phone(phone)
+    
+    message = "Тестовое сообщение от системы автоматических напоминаний Premium Park"
+    
+    print(f"\n{'='*60}")
+    print(f"🧪 Тестовая отправка - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"{'='*60}")
+    print(f"📤 Отправляем тестовое сообщение на {phone_normalized}...")
+    
+    if send_whatsapp_message(phone_normalized, message):
+        print("✅ Тестовое сообщение отправлено успешно!")
     else:
-        print('Ошибка при получении данных по аренде:', response.text[:200])
-except Exception as e:
-    print(f'Ошибка при получении данных по аренде: {e}') 
+        print("❌ Ошибка при отправке тестового сообщения")
+    print()
+
+
+def setup_scheduler():
+    """
+    Настраивает планировщик задач
+    """
+    # Каждое утро в 9:00
+    schedule.every().day.at("09:00").do(send_morning_reminder)
+    
+    # В 13:00 только в будние дни (понедельник-пятница)
+    schedule.every().monday.at("13:00").do(send_weekday_afternoon_reminder)
+    schedule.every().tuesday.at("13:00").do(send_weekday_afternoon_reminder)
+    schedule.every().wednesday.at("13:00").do(send_weekday_afternoon_reminder)
+    schedule.every().thursday.at("13:00").do(send_weekday_afternoon_reminder)
+    schedule.every().friday.at("13:00").do(send_weekday_afternoon_reminder)
+    
+    # В обед по выходным (суббота и воскресенье) в 13:00
+    schedule.every().saturday.at("13:00").do(send_weekend_afternoon_reminder)
+    schedule.every().sunday.at("13:00").do(send_weekend_afternoon_reminder)
+    
+    print("✅ Планировщик задач настроен:")
+    print("   - Утреннее напоминание: каждый день в 09:00 (баланс < 0)")
+    print("   - Напоминание в будни: понедельник-пятница в 13:00 (баланс < -500)")
+    print("   - Напоминание в выходные: суббота-воскресенье в 13:00 (баланс < -500)")
+
+
+def main():
+    """
+    Главная функция - запускает планировщик или выполняет тестовую отправку
+    """
+    if len(sys.argv) > 1:
+        command = sys.argv[1].lower()
+        
+        if command == "test":
+            # Тестовая отправка
+            phone = sys.argv[2] if len(sys.argv) > 2 else None
+            send_test_message(phone)
+            return
+        elif command == "morning":
+            # Ручной запуск утреннего напоминания
+            send_morning_reminder()
+            return
+        elif command == "weekday":
+            # Ручной запуск напоминания в будний день
+            send_weekday_afternoon_reminder()
+            return
+        elif command == "weekend":
+            # Ручной запуск напоминания в выходной день
+            send_weekend_afternoon_reminder()
+            return
+        elif command == "help":
+            print("""
+Использование:
+  python main.py              - Запуск планировщика задач
+  python main.py test [номер] - Отправка тестового сообщения
+  python main.py morning      - Ручной запуск утреннего напоминания
+  python main.py weekday      - Ручной запуск напоминания в будний день
+  python main.py weekend      - Ручной запуск напоминания в выходной день
+  python main.py help         - Показать эту справку
+            """)
+            return
+    
+    # Запуск планировщика
+    setup_scheduler()
+    print(f"\n🔄 Планировщик запущен. Ожидание задач...")
+    print(f"   Текущее время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"   Для остановки нажмите Ctrl+C\n")
+    
+    try:
+        while True:
+            schedule.run_pending()
+            time.sleep(60)  # Проверяем каждую минуту
+    except KeyboardInterrupt:
+        print("\n\n👋 Планировщик остановлен")
+
+
+if __name__ == "__main__":
+    main()
