@@ -66,30 +66,6 @@ def send_whatsapp_message(recipient: str, message: str):
 
 if __name__ == "__main__":
     # Пример использования
-
-    # recipient = "79242340969"
-    # recipient = "79089732116"
-    recipient = "79990570617"
-
-    import random
-
-    messages = [
-        "сперма",
-        "говно",
-        "чурка",
-        "хуевые ноги",
-        "маленький пенис",
-        "скучный",
-        "мелкий",
-        "гомно",
-        "крутой (не оч)",
-        "не крутой (оч)",
-    ]
-    
-    message = "Проверяю работу скрипта..."
+    recipient = "79990000000"  # Замените на реальный номер
+    message = "Тестовое сообщение от системы Premium Park"
     send_whatsapp_message(recipient, message)
-
-    for i in range(2):
-        message = random.choice(messages)
-        send_whatsapp_message(recipient, f"киря - {message}") 
-        time.sleep(1)

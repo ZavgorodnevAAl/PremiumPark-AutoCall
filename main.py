@@ -89,7 +89,7 @@ def filter_drivers(drivers, balance_threshold: float):
         list: Отфильтрованный список водителей
     """
     filtered = []
-    blacklist = load_blacklist()
+    blacklist_phones = get_blacklist_phones()
     
     for driver in drivers:
         try:
@@ -102,7 +102,7 @@ def filter_drivers(drivers, balance_threshold: float):
             phone_normalized = normalize_phone(phone)
             
             # Проверяем, не в черном списке ли номер
-            in_blacklist = phone_normalized in blacklist
+            in_blacklist = phone_normalized in blacklist_phones
             
             if balance < balance_threshold and is_working and not skip and phone and not in_blacklist:
                 filtered.append({
@@ -206,119 +206,173 @@ def load_blacklist():
     Загружает черный список из файла
     
     Returns:
-        list: Список номеров телефонов в черном списке (нормализованные)
+        list: Список объектов {'phone': str, 'fio': str} или список номеров (для обратной совместимости)
     """
     blacklist_file = os.path.join(os.path.dirname(__file__), 'blacklist.json')
     try:
         with open(blacklist_file, 'r', encoding='utf-8') as f:
             blacklist = json.load(f)
-            # Нормализуем все номера в черном списке
-            return [normalize_phone(phone) for phone in blacklist if phone]
+            result = []
+            for item in blacklist:
+                if isinstance(item, dict):
+                    # Новая структура: {'phone': '...', 'fio': '...'}
+                    if 'phone' in item:
+                        result.append({
+                            'phone': normalize_phone(item['phone']),
+                            'fio': item.get('fio', 'Неизвестно')
+                        })
+                elif isinstance(item, str):
+                    # Старая структура: просто номер (для обратной совместимости)
+                    phone = normalize_phone(item)
+                    if phone:
+                        result.append({
+                            'phone': phone,
+                            'fio': 'Неизвестно'
+                        })
+            return result
     except Exception as e:
         print(f"❌ Ошибка при загрузке черного списка: {e}")
         return []
+
+
+def get_blacklist_phones():
+    """
+    Возвращает только список номеров телефонов из черного списка (для фильтрации)
+    
+    Returns:
+        list: Список нормализованных номеров телефонов
+    """
+    blacklist = load_blacklist()
+    return [item['phone'] if isinstance(item, dict) else item for item in blacklist]
 
 
 def send_morning_reminder():
     """
     Отправляет утреннее напоминание водителям с балансом меньше порога
     """
-    settings = load_settings()
-    threshold = float(settings.get("morning_balance_threshold", 0))
-    
-    print(f"\n{'='*60}")
-    print(f"🌅 Утреннее напоминание - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"{'='*60}")
-    
-    drivers = get_drivers()
-    if not drivers:
-        print("❌ Не удалось получить данные о водителях")
-        return
-    
-    filtered_drivers = filter_drivers(drivers, balance_threshold=threshold)
-    
-    if not filtered_drivers:
-        print(f"✅ Нет водителей с балансом < {threshold}")
-        return
-    
-    messages = load_messages()
-    message = messages.get("morning", "")
-    
-    print(f"📤 Отправляем сообщения {len(filtered_drivers)} водителям (баланс < {threshold})...")
-    for driver in filtered_drivers:
-        print(f"  → {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']}")
-        send_whatsapp_message(driver['phone'], message)
-        time.sleep(1)  # Небольшая задержка между отправками
-    
-    print(f"✅ Утреннее напоминание завершено\n")
+    try:
+        settings = load_settings()
+        threshold = float(settings.get("morning_balance_threshold", 0))
+        
+        print(f"\n{'='*60}")
+        print(f"🌅 Утреннее напоминание - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"{'='*60}")
+        
+        drivers = get_drivers()
+        if not drivers:
+            print("❌ Не удалось получить данные о водителях")
+            return
+        
+        filtered_drivers = filter_drivers(drivers, balance_threshold=threshold)
+        
+        if not filtered_drivers:
+            print(f"✅ Нет водителей с балансом < {threshold}")
+            return
+        
+        messages = load_messages()
+        message = messages.get("morning", "")
+        
+        print(f"📤 Отправляем сообщения {len(filtered_drivers)} водителям (баланс < {threshold})...")
+        for driver in filtered_drivers:
+            try:
+                print(f"  → {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']}")
+                send_whatsapp_message(driver['phone'], message)
+                time.sleep(1)  # Небольшая задержка между отправками
+            except Exception as e:
+                print(f"  ❌ Ошибка при отправке {driver['fio']}: {e}")
+                continue  # Продолжаем отправку остальным
+        
+        print(f"✅ Утреннее напоминание завершено\n")
+    except Exception as e:
+        print(f"❌ Критическая ошибка в send_morning_reminder: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 def send_weekday_afternoon_reminder():
     """
     Отправляет напоминание в 13:00 в будние дни водителям с балансом меньше порога
     """
-    settings = load_settings()
-    threshold = float(settings.get("afternoon_balance_threshold", -500))
-    
-    print(f"\n{'='*60}")
-    print(f"📅 Напоминание в будний день - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"{'='*60}")
-    
-    drivers = get_drivers()
-    if not drivers:
-        print("❌ Не удалось получить данные о водителях")
-        return
-    
-    filtered_drivers = filter_drivers(drivers, balance_threshold=threshold)
-    
-    if not filtered_drivers:
-        print(f"✅ Нет водителей с балансом < {threshold}")
-        return
-    
-    messages = load_messages()
-    message = messages.get("weekday_afternoon", "")
-    
-    print(f"📤 Отправляем сообщения {len(filtered_drivers)} водителям (баланс < {threshold})...")
-    for driver in filtered_drivers:
-        print(f"  → {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']}")
-        send_whatsapp_message(driver['phone'], message)
-        time.sleep(1)
-    
-    print(f"✅ Напоминание в будний день завершено\n")
+    try:
+        settings = load_settings()
+        threshold = float(settings.get("afternoon_balance_threshold", -500))
+        
+        print(f"\n{'='*60}")
+        print(f"📅 Напоминание в будний день - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"{'='*60}")
+        
+        drivers = get_drivers()
+        if not drivers:
+            print("❌ Не удалось получить данные о водителях")
+            return
+        
+        filtered_drivers = filter_drivers(drivers, balance_threshold=threshold)
+        
+        if not filtered_drivers:
+            print(f"✅ Нет водителей с балансом < {threshold}")
+            return
+        
+        messages = load_messages()
+        message = messages.get("weekday_afternoon", "")
+        
+        print(f"📤 Отправляем сообщения {len(filtered_drivers)} водителям (баланс < {threshold})...")
+        for driver in filtered_drivers:
+            try:
+                print(f"  → {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']}")
+                send_whatsapp_message(driver['phone'], message)
+                time.sleep(1)
+            except Exception as e:
+                print(f"  ❌ Ошибка при отправке {driver['fio']}: {e}")
+                continue  # Продолжаем отправку остальным
+        
+        print(f"✅ Напоминание в будний день завершено\n")
+    except Exception as e:
+        print(f"❌ Критическая ошибка в send_weekday_afternoon_reminder: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 def send_weekend_afternoon_reminder():
     """
     Отправляет напоминание в обед по выходным водителям с балансом меньше порога
     """
-    settings = load_settings()
-    threshold = float(settings.get("afternoon_balance_threshold", -500))
-    
-    print(f"\n{'='*60}")
-    print(f"🏖️ Напоминание в выходной день - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"{'='*60}")
-    
-    drivers = get_drivers()
-    if not drivers:
-        print("❌ Не удалось получить данные о водителях")
-        return
-    
-    filtered_drivers = filter_drivers(drivers, balance_threshold=threshold)
-    
-    if not filtered_drivers:
-        print(f"✅ Нет водителей с балансом < {threshold}")
-        return
-    
-    messages = load_messages()
-    message = messages.get("weekend_afternoon", "")
-    
-    print(f"📤 Отправляем сообщения {len(filtered_drivers)} водителям (баланс < {threshold})...")
-    for driver in filtered_drivers:
-        print(f"  → {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']}")
-        send_whatsapp_message(driver['phone'], message)
-        time.sleep(1)
-    
-    print(f"✅ Напоминание в выходной день завершено\n")
+    try:
+        settings = load_settings()
+        threshold = float(settings.get("afternoon_balance_threshold", -500))
+        
+        print(f"\n{'='*60}")
+        print(f"🏖️ Напоминание в выходной день - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"{'='*60}")
+        
+        drivers = get_drivers()
+        if not drivers:
+            print("❌ Не удалось получить данные о водителях")
+            return
+        
+        filtered_drivers = filter_drivers(drivers, balance_threshold=threshold)
+        
+        if not filtered_drivers:
+            print(f"✅ Нет водителей с балансом < {threshold}")
+            return
+        
+        messages = load_messages()
+        message = messages.get("weekend_afternoon", "")
+        
+        print(f"📤 Отправляем сообщения {len(filtered_drivers)} водителям (баланс < {threshold})...")
+        for driver in filtered_drivers:
+            try:
+                print(f"  → {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']}")
+                send_whatsapp_message(driver['phone'], message)
+                time.sleep(1)
+            except Exception as e:
+                print(f"  ❌ Ошибка при отправке {driver['fio']}: {e}")
+                continue  # Продолжаем отправку остальным
+        
+        print(f"✅ Напоминание в выходной день завершено\n")
+    except Exception as e:
+        print(f"❌ Критическая ошибка в send_weekend_afternoon_reminder: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 def send_test_message(phone: str = None):

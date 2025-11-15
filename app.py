@@ -34,8 +34,10 @@ st.set_page_config(
 # Инициализация session state
 if 'scheduler_running' not in st.session_state:
     st.session_state.scheduler_running = False
-if 'scheduler_thread' not in st.session_state:
-    st.session_state.scheduler_thread = None
+if 'scheduler_status_changed' not in st.session_state:
+    st.session_state.scheduler_status_changed = False
+if 'last_refresh_time' not in st.session_state:
+    st.session_state.last_refresh_time = time.time()
 if 'messages_saved' not in st.session_state:
     st.session_state.messages_saved = False
 if 'settings_saved' not in st.session_state:
@@ -44,6 +46,22 @@ if 'blacklist_updated' not in st.session_state:
     st.session_state.blacklist_updated = False
 if 'env_saved' not in st.session_state:
     st.session_state.env_saved = False
+if 'show_drivers_list' not in st.session_state:
+    st.session_state.show_drivers_list = False
+if 'drivers_list_data' not in st.session_state:
+    st.session_state.drivers_list_data = []
+if 'drivers_search' not in st.session_state:
+    st.session_state.drivers_search = ""
+
+# Используем кэширование для сохранения глобального состояния между перезагрузками
+@st.cache_resource
+def get_scheduler_state():
+    """Возвращает глобальное состояние планировщика, которое сохраняется между перезагрузками"""
+    return {
+        'running': False,
+        'lock': threading.Lock(),
+        'thread': None
+    }
 
 
 def save_messages(messages_dict):
@@ -74,8 +92,19 @@ def save_blacklist(blacklist_list):
     """Сохраняет черный список в файл"""
     blacklist_file = os.path.join(os.path.dirname(__file__), 'blacklist.json')
     try:
+        # Убеждаемся, что все элементы имеют структуру {'phone': str, 'fio': str}
+        formatted_list = []
+        for item in blacklist_list:
+            if isinstance(item, dict):
+                formatted_list.append(item)
+            else:
+                # Если это просто строка (номер), преобразуем в объект
+                formatted_list.append({
+                    'phone': normalize_phone(item) if isinstance(item, str) else item,
+                    'fio': 'Неизвестно'
+                })
         with open(blacklist_file, 'w', encoding='utf-8') as f:
-            json.dump(blacklist_list, f, ensure_ascii=False, indent=2)
+            json.dump(formatted_list, f, ensure_ascii=False, indent=2)
         return True
     except Exception as e:
         st.error(f"Ошибка при сохранении: {e}")
@@ -93,7 +122,12 @@ def load_env():
                     line = line.strip()
                     if line and not line.startswith('#') and '=' in line:
                         key, value = line.split('=', 1)
-                        env_vars[key.strip()] = value.strip()
+                        value = value.strip()
+                        # Убираем кавычки, если они есть
+                        if (value.startswith('"') and value.endswith('"')) or \
+                           (value.startswith("'") and value.endswith("'")):
+                            value = value[1:-1]
+                        env_vars[key.strip()] = value
         except Exception as e:
             st.error(f"Ошибка при чтении .env: {e}")
     return env_vars
@@ -123,42 +157,82 @@ def save_env(env_vars):
 def setup_schedule():
     """Настраивает расписание задач"""
     schedule.clear()
-    schedule.every().day.at("09:00").do(send_morning_reminder)
-    schedule.every().monday.at("13:00").do(send_weekday_afternoon_reminder)
-    schedule.every().tuesday.at("13:00").do(send_weekday_afternoon_reminder)
-    schedule.every().wednesday.at("13:00").do(send_weekday_afternoon_reminder)
-    schedule.every().thursday.at("13:00").do(send_weekday_afternoon_reminder)
-    schedule.every().friday.at("13:00").do(send_weekday_afternoon_reminder)
-    schedule.every().saturday.at("13:00").do(send_weekend_afternoon_reminder)
-    schedule.every().sunday.at("13:00").do(send_weekend_afternoon_reminder)
+    
+    # Загружаем настройки времени
+    settings = load_settings()
+    morning_time = settings.get("morning_time", "09:00")
+    afternoon_time = settings.get("afternoon_time", "13:00")
+    
+    # Настраиваем утренние напоминания для каждого дня недели
+    schedule.every().monday.at(morning_time).do(send_morning_reminder)
+    schedule.every().tuesday.at(morning_time).do(send_morning_reminder)
+    schedule.every().wednesday.at(morning_time).do(send_morning_reminder)
+    schedule.every().thursday.at(morning_time).do(send_morning_reminder)
+    schedule.every().friday.at(morning_time).do(send_morning_reminder)
+    schedule.every().saturday.at(morning_time).do(send_morning_reminder)
+    schedule.every().sunday.at(morning_time).do(send_morning_reminder)
+    
+    # Настраиваем дневные напоминания
+    schedule.every().monday.at(afternoon_time).do(send_weekday_afternoon_reminder)
+    schedule.every().tuesday.at(afternoon_time).do(send_weekday_afternoon_reminder)
+    schedule.every().wednesday.at(afternoon_time).do(send_weekday_afternoon_reminder)
+    schedule.every().thursday.at(afternoon_time).do(send_weekday_afternoon_reminder)
+    schedule.every().friday.at(afternoon_time).do(send_weekday_afternoon_reminder)
+    schedule.every().saturday.at(afternoon_time).do(send_weekend_afternoon_reminder)
+    schedule.every().sunday.at(afternoon_time).do(send_weekend_afternoon_reminder)
 
 
 def run_scheduler():
     """Запускает планировщик в отдельном потоке"""
+    scheduler_state = get_scheduler_state()
     setup_schedule()
     
-    while st.session_state.scheduler_running:
-        schedule.run_pending()
-        time.sleep(60)
+    while True:
+        try:
+            with scheduler_state['lock']:
+                if not scheduler_state['running']:
+                    break
+            schedule.run_pending()
+            time.sleep(60)
+        except Exception as e:
+            # Логируем ошибку, но продолжаем работу планировщика
+            print(f"[SCHEDULER ERROR] {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Ошибка в планировщике: {e}")
+            import traceback
+            traceback.print_exc()
+            # Ждем минуту перед следующей попыткой
+            time.sleep(60)
+
+
+def get_scheduler_status():
+    """Возвращает статус планировщика"""
+    scheduler_state = get_scheduler_state()
+    with scheduler_state['lock']:
+        return scheduler_state['running']
 
 
 def start_scheduler():
     """Запускает планировщик"""
-    if not st.session_state.scheduler_running:
-        st.session_state.scheduler_running = True
-        st.session_state.scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
-        st.session_state.scheduler_thread.start()
-        st.success("✅ Планировщик запущен!")
-        st.rerun()
+    scheduler_state = get_scheduler_state()
+    with scheduler_state['lock']:
+        if not scheduler_state['running']:
+            scheduler_state['running'] = True
+            st.session_state.scheduler_running = True
+            st.session_state.scheduler_status_changed = True
+            scheduler_state['thread'] = threading.Thread(target=run_scheduler, daemon=True)
+            scheduler_state['thread'].start()
+            st.rerun()
 
 
 def stop_scheduler():
     """Останавливает планировщик"""
-    if st.session_state.scheduler_running:
-        st.session_state.scheduler_running = False
-        schedule.clear()
-        st.success("⏹️ Планировщик остановлен!")
-        st.rerun()
+    scheduler_state = get_scheduler_state()
+    with scheduler_state['lock']:
+        if scheduler_state['running']:
+            scheduler_state['running'] = False
+            st.session_state.scheduler_running = False
+            st.session_state.scheduler_status_changed = True
+            schedule.clear()
+            st.rerun()
 
 
 # Заголовок
@@ -172,6 +246,13 @@ page = st.sidebar.radio(
     ["Главная", "Отправка рассылок", "Тестовая отправка", "Редактор шаблонов", "Настройки", "Черный список", "Настройки API", "Статус планировщика"]
 )
 
+# Сохраняем текущую страницу и сбрасываем таймер при смене страницы
+if 'current_page' not in st.session_state:
+    st.session_state.current_page = page
+elif st.session_state.current_page != page:
+    st.session_state.current_page = page
+    st.session_state.last_refresh_time = time.time()  # Сбрасываем таймер при смене страницы
+
 # Главная страница
 if page == "Главная":
     st.header("Добро пожаловать!")
@@ -182,12 +263,6 @@ if page == "Главная":
     - 📤 **Ручная отправка рассылок** в любое время
     - 🧪 **Тестовая отправка** на указанный номер
     - ✏️ **Редактирование шаблонов** сообщений
-    
-    ### Расписание автоматических рассылок:
-    
-    - **Утреннее напоминание**: Каждый день в 09:00 (баланс < 0)
-    - **Напоминание в будни**: Понедельник-Пятница в 13:00 (баланс < -500)
-    - **Напоминание в выходные**: Суббота-Воскресенье в 13:00 (баланс < -500)
     
     ### Как использовать:
     
@@ -200,27 +275,38 @@ if page == "Главная":
 elif page == "Статус планировщика":
     st.header("⚙️ Управление планировщиком")
     
-    col1, col2 = st.columns(2)
+    # Синхронизируем состояние с глобальной переменной
+    scheduler_status = get_scheduler_status()
+    if scheduler_status != st.session_state.get('scheduler_running', False):
+        st.session_state.scheduler_running = scheduler_status
     
-    with col1:
+    # Показываем сообщение об изменении статуса
+    if st.session_state.scheduler_status_changed:
+        if st.session_state.scheduler_running:
+            st.success("✅ Планировщик успешно запущен!")
+        else:
+            st.success("⏹️ Планировщик успешно остановлен!")
+        st.session_state.scheduler_status_changed = False
+    
+    # Одна кнопка, которая меняется в зависимости от состояния
+    if st.session_state.scheduler_running:
+        if st.button("⏹️ Остановить планировщик", type="primary", use_container_width=True):
+            stop_scheduler()
+    else:
         if st.button("▶️ Запустить планировщик", type="primary", use_container_width=True):
             start_scheduler()
-    
-    with col2:
-        if st.button("⏹️ Остановить планировщик", use_container_width=True):
-            stop_scheduler()
     
     st.markdown("---")
     
     # Статус
     if st.session_state.scheduler_running:
         st.success("🟢 Планировщик работает")
-        st.info("""
-        **Активные задачи:**
-        - Утреннее напоминание: каждый день в 09:00
-        - Напоминание в будни: Пн-Пт в 13:00
-        - Напоминание в выходные: Сб-Вс в 13:00
-        """)
+        
+        # Загружаем настройки времени для отображения
+        settings = load_settings()
+        morning_time = settings.get("morning_time", "09:00")
+        afternoon_time = settings.get("afternoon_time", "13:00")
+
     else:
         st.warning("🔴 Планировщик остановлен")
         st.info("Нажмите кнопку 'Запустить планировщик' для начала автоматических рассылок")
@@ -229,17 +315,71 @@ elif page == "Статус планировщика":
     st.markdown("### 📅 Следующие запланированные запуски:")
     
     if st.session_state.scheduler_running:
-        setup_schedule()
         jobs = schedule.jobs
         if jobs:
             next_runs = sorted([job.next_run for job in jobs if job.next_run])
             if next_runs:
-                st.write(f"**Ближайший запуск**: {next_runs[0].strftime('%Y-%m-%d %H:%M:%S')}")
-                st.write(f"**Всего задач**: {len(jobs)}")
+                # Ближайший запуск
+                nearest = next_runs[0]
+                now = datetime.now()
+                time_until = nearest - now
+                
+                # Форматируем время до запуска
+                hours = int(time_until.total_seconds() // 3600)
+                minutes = int((time_until.total_seconds() % 3600) // 60)
+                
+                if hours > 24:
+                    days = hours // 24
+                    hours = hours % 24
+                    time_str = f"{days} дн. {hours} ч. {minutes} мин."
+                elif hours > 0:
+                    time_str = f"{hours} ч. {minutes} мин."
+                else:
+                    time_str = f"{minutes} мин."
+                
+                st.success(f"⏰ **Ближайший запуск**: {nearest.strftime('%d.%m.%Y в %H:%M')} (через {time_str})")
+                
+                st.markdown("---")
+                st.markdown("**Следующие запуски:**")
+                
+                # Показываем следующие 6 запусков
+                for i, next_run in enumerate(next_runs[:6], 1):
+                    day_name = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'][next_run.weekday()]
+                    time_until_this = next_run - now
+                    hours_until = int(time_until_this.total_seconds() // 3600)
+                    
+                    if hours_until > 24:
+                        days_until = hours_until // 24
+                        time_info = f"(через {days_until} дн.)"
+                    elif hours_until > 0:
+                        time_info = f"(через {hours_until} ч.)"
+                    else:
+                        mins_until = int(time_until_this.total_seconds() // 60)
+                        time_info = f"(через {mins_until} мин.)"
+                    
+                    st.write(f"{i}. {day_name}, {next_run.strftime('%d.%m.%Y')} в **{next_run.strftime('%H:%M')}** {time_info}")
+                
+                current_time = time.time()
+                time_since_refresh = current_time - st.session_state.last_refresh_time
+                seconds_until_refresh = max(0, 30 - int(time_since_refresh))
+                
+                if st.button("🔄 Обновить страницу", use_container_width=True, key="refresh_scheduler"):
+                    st.session_state.last_refresh_time = time.time()
+                    st.rerun()
             else:
                 st.write("Нет запланированных задач")
         else:
             st.write("Нет запланированных задач")
+        
+        # Автоматическое обновление страницы каждые 30 секунд (только на этой странице)
+        if page == "Статус планировщика":
+            current_time = time.time()
+            time_since_refresh = current_time - st.session_state.last_refresh_time
+            
+            if time_since_refresh >= 30:
+                st.session_state.last_refresh_time = current_time
+                time.sleep(0.1)  # Небольшая задержка для плавности
+                st.rerun()
     else:
         st.info("Запустите планировщик, чтобы увидеть расписание")
 
@@ -352,10 +492,10 @@ elif page == "Тестовая отправка":
 
 # Настройки
 elif page == "Настройки":
-    st.header("⚙️ Настройки порогов баланса")
+    st.header("⚙️ Настройки рассылок")
     
     st.markdown("""
-    Здесь вы можете изменить пороги баланса, при которых отправляются напоминания.
+    Здесь вы можете изменить пороги баланса и время отправки напоминаний.
     """)
     
     settings = load_settings()
@@ -363,13 +503,27 @@ elif page == "Настройки":
     # Показываем сообщение о сохранении, если оно было
     if st.session_state.settings_saved:
         st.success("✅ **Настройки успешно сохранены!**")
+        
+        # Показываем кнопку перезапуска планировщика, если он работает
+        if st.session_state.scheduler_running:
+            st.warning("⚠️ Планировщик работает. Перезапустите его для применения новых настроек времени.")
+            col_restart1, col_restart2 = st.columns([1, 3])
+            with col_restart1:
+                if st.button("🔄 Перезапустить планировщик", type="secondary", use_container_width=True):
+                    stop_scheduler()
+                    time.sleep(0.5)
+                    start_scheduler()
+        
         st.session_state.settings_saved = False  # Сбрасываем флаг после показа
         st.markdown("---")
+    
+    # Пороги баланса
+    st.subheader("💰 Пороги баланса")
     
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("🌅 Утреннее напоминание")
+        st.markdown("**🌅 Утреннее напоминание**")
         morning_threshold = st.number_input(
             "Порог баланса для утреннего напоминания",
             value=float(settings.get("morning_balance_threshold", 0)),
@@ -380,7 +534,7 @@ elif page == "Настройки":
         st.info(f"Текущее значение: **{morning_threshold}**")
     
     with col2:
-        st.subheader("📅 Напоминание в обед (будни и выходные)")
+        st.markdown("**📅 Напоминание в обед (будни и выходные)**")
         afternoon_threshold = st.number_input(
             "Порог баланса для напоминания в обед",
             value=float(settings.get("afternoon_balance_threshold", -500)),
@@ -392,11 +546,38 @@ elif page == "Настройки":
     
     st.markdown("---")
     
+    # Время отправки
+    st.subheader("⏰ Время отправки")
+    
+    col3, col4 = st.columns(2)
+    
+    with col3:
+        st.markdown("**🌅 Утреннее напоминание**")
+        morning_time = st.time_input(
+            "Время отправки утреннего напоминания",
+            value=datetime.strptime(settings.get("morning_time", "09:00"), "%H:%M").time(),
+            help="Время отправки утреннего напоминания каждый день"
+        )
+        st.info(f"Текущее время: **{morning_time.strftime('%H:%M')}**")
+    
+    with col4:
+        st.markdown("**📅 Напоминание в обед**")
+        afternoon_time = st.time_input(
+            "Время отправки дневного напоминания",
+            value=datetime.strptime(settings.get("afternoon_time", "13:00"), "%H:%M").time(),
+            help="Время отправки напоминания в будни и выходные"
+        )
+        st.info(f"Текущее время: **{afternoon_time.strftime('%H:%M')}**")
+    
+    st.markdown("---")
+    
     # Кнопка сохранения
     if st.button("💾 Сохранить настройки", type="primary", use_container_width=True):
         new_settings = {
             "morning_balance_threshold": morning_threshold,
-            "afternoon_balance_threshold": afternoon_threshold
+            "afternoon_balance_threshold": afternoon_threshold,
+            "morning_time": morning_time.strftime("%H:%M"),
+            "afternoon_time": afternoon_time.strftime("%H:%M")
         }
         if save_settings(new_settings):
             st.session_state.settings_saved = True
@@ -422,20 +603,53 @@ elif page == "Черный список":
     
     # Показываем текущий список
     st.subheader("📋 Текущий черный список")
-    if blacklist:
-        st.write(f"**Всего номеров в черном списке:** {len(blacklist)}")
-        for i, phone in enumerate(blacklist, 1):
+    
+    # Поиск по черному списку
+    if 'blacklist_search' not in st.session_state:
+        st.session_state.blacklist_search = ""
+    
+    blacklist_search = st.text_input(
+        "🔍 Поиск по ФИО или номеру телефона",
+        value=st.session_state.blacklist_search,
+        key="blacklist_search_input",
+        placeholder="Введите ФИО или номер телефона..."
+    )
+    st.session_state.blacklist_search = blacklist_search.lower()
+    
+    # Фильтруем черный список по поисковому запросу
+    filtered_blacklist = blacklist
+    if st.session_state.blacklist_search:
+        filtered_blacklist = [
+            item for item in blacklist
+            if st.session_state.blacklist_search in item.get('fio', '').lower() or 
+               st.session_state.blacklist_search in item.get('phone', '')
+        ]
+    
+    if filtered_blacklist:
+        st.write(f"**Всего номеров в черном списке:** {len(filtered_blacklist)} (из {len(blacklist)})")
+        for i, item in enumerate(filtered_blacklist, 1):
+            # Поддерживаем обратную совместимость
+            if isinstance(item, dict):
+                phone = item.get('phone', '')
+                fio = item.get('fio', 'Неизвестно')
+            else:
+                phone = item
+                fio = 'Неизвестно'
+            
             col1, col2 = st.columns([4, 1])
             with col1:
-                st.write(f"{i}. {phone}")
+                st.write(f"{i}. **{fio}** - 📱 {phone}")
             with col2:
-                if st.button("🗑️ Удалить", key=f"delete_{i}"):
-                    blacklist.remove(phone)
+                if st.button("🗑️ Удалить", key=f"delete_{phone}"):
+                    blacklist.remove(item)
                     if save_blacklist(blacklist):
                         st.session_state.blacklist_updated = True
                         st.rerun()
     else:
-        st.info("Черный список пуст")
+        if st.session_state.blacklist_search:
+            st.info(f"По запросу '{blacklist_search}' ничего не найдено")
+        else:
+            st.info("Черный список пуст")
     
     st.markdown("---")
     
@@ -459,8 +673,22 @@ elif page == "Черный список":
             if new_phone:
                 phone_normalized = normalize_phone(new_phone)
                 if phone_normalized:
-                    if phone_normalized not in blacklist:
-                        blacklist.append(phone_normalized)
+                    # Проверяем, не в черном списке ли уже
+                    blacklist_phones = [item.get('phone') if isinstance(item, dict) else item for item in blacklist]
+                    if phone_normalized not in blacklist_phones:
+                        # Пытаемся найти ФИО по номеру из списка водителей
+                        fio = 'Неизвестно'
+                        try:
+                            drivers = get_drivers()
+                            for driver in drivers:
+                                driver_phone = normalize_phone(driver.get('PhoneNumber', ''))
+                                if driver_phone == phone_normalized:
+                                    fio = driver.get('FIO', 'Неизвестно')
+                                    break
+                        except:
+                            pass
+                        
+                        blacklist.append({'phone': phone_normalized, 'fio': fio})
                         if save_blacklist(blacklist):
                             st.session_state.blacklist_updated = True
                             st.rerun()
@@ -476,46 +704,95 @@ elif page == "Черный список":
     # Быстрое добавление из списка водителей
     st.subheader("🔍 Добавить из списка водителей")
     
-    if st.button("👥 Показать список водителей для добавления"):
-        with st.spinner("Загрузка данных..."):
-            drivers = get_drivers()
-            if drivers:
-                # Показываем всех работающих водителей
-                working_drivers = []
-                for driver in drivers:
-                    try:
-                        is_working = (str(driver.get('Status', '')).lower() == 'работает') and \
-                                    driver.get('NameConditionWork', '') != ''
-                        phone = driver.get('PhoneNumber', '')
-                        if is_working and phone:
-                            phone_normalized = normalize_phone(phone)
-                            if phone_normalized and phone_normalized not in blacklist:
-                                working_drivers.append({
-                                    'fio': driver.get('FIO', ''),
-                                    'phone': phone_normalized,
-                                    'balance': float(driver.get('Balance', 0) or 0)
-                                })
-                    except Exception:
-                        continue
-                
-                if working_drivers:
-                    st.write(f"**Найдено водителей:** {len(working_drivers)}")
-                    for driver in working_drivers:
-                        col1, col2, col3 = st.columns([3, 2, 1])
-                        with col1:
-                            st.write(f"**{driver['fio']}**")
-                        with col2:
-                            st.write(f"📱 {driver['phone']} | 💰 {driver['balance']:.2f} ₽")
-                        with col3:
-                            if st.button("➕ Добавить", key=f"add_{driver['phone']}"):
-                                blacklist.append(driver['phone'])
-                                if save_blacklist(blacklist):
-                                    st.session_state.blacklist_updated = True
-                                    st.rerun()
-                else:
-                    st.info("Нет доступных водителей для добавления")
+    col_btn, col_search = st.columns([1, 2])
+    with col_btn:
+        if st.button("👥 Показать список водителей", use_container_width=True):
+            if not st.session_state.show_drivers_list:
+                # Загружаем данные только при первом показе
+                with st.spinner("Загрузка данных..."):
+                    drivers = get_drivers()
+                    if drivers:
+                        # Показываем всех работающих водителей
+                        working_drivers = []
+                        for driver in drivers:
+                            try:
+                                is_working = (str(driver.get('Status', '')).lower() == 'работает') and \
+                                            driver.get('NameConditionWork', '') != ''
+                                phone = driver.get('PhoneNumber', '')
+                                if is_working and phone:
+                                    phone_normalized = normalize_phone(phone)
+                                    # Проверяем, не в черном списке ли уже
+                                    blacklist_phones = [item.get('phone') if isinstance(item, dict) else item for item in blacklist]
+                                    if phone_normalized and phone_normalized not in blacklist_phones:
+                                        working_drivers.append({
+                                            'fio': driver.get('FIO', ''),
+                                            'phone': phone_normalized,
+                                            'balance': float(driver.get('Balance', 0) or 0)
+                                        })
+                            except Exception:
+                                continue
+                        st.session_state.drivers_list_data = working_drivers
+                    else:
+                        st.error("Не удалось загрузить данные о водителях")
+                        st.session_state.drivers_list_data = []
+            st.session_state.show_drivers_list = not st.session_state.show_drivers_list
+            st.rerun()
+    
+    # Показываем список водителей, если флаг установлен
+    if st.session_state.show_drivers_list:
+        # Поиск по списку
+        search_query = st.text_input(
+            "🔍 Поиск по ФИО или номеру телефона",
+            value=st.session_state.drivers_search,
+            key="drivers_search_input",
+            placeholder="Введите ФИО или номер телефона..."
+        )
+        st.session_state.drivers_search = search_query.lower()
+        
+        # Фильтруем список по поисковому запросу
+        filtered_drivers = st.session_state.drivers_list_data
+        if st.session_state.drivers_search:
+            filtered_drivers = [
+                d for d in st.session_state.drivers_list_data
+                if st.session_state.drivers_search in d['fio'].lower() or 
+                   st.session_state.drivers_search in d['phone']
+            ]
+        
+        if filtered_drivers:
+            st.write(f"**Найдено водителей:** {len(filtered_drivers)} (из {len(st.session_state.drivers_list_data)})")
+            st.markdown("---")
+            for driver in filtered_drivers:
+                col1, col2, col3 = st.columns([3, 2, 1])
+                with col1:
+                    st.write(f"**{driver['fio']}**")
+                with col2:
+                    st.write(f"📱 {driver['phone']} | 💰 {driver['balance']:.2f} ₽")
+                with col3:
+                    if st.button("➕ Добавить", key=f"add_{driver['phone']}"):
+                        # Загружаем актуальный черный список перед добавлением
+                        current_blacklist = load_blacklist()
+                        blacklist_phones = [item.get('phone') if isinstance(item, dict) else item for item in current_blacklist]
+                        if driver['phone'] not in blacklist_phones:
+                            current_blacklist.append({
+                                'phone': driver['phone'],
+                                'fio': driver['fio']
+                            })
+                            if save_blacklist(current_blacklist):
+                                # Удаляем водителя из отображаемого списка без перезагрузки API
+                                st.session_state.drivers_list_data = [
+                                    d for d in st.session_state.drivers_list_data 
+                                    if d['phone'] != driver['phone']
+                                ]
+                                st.session_state.blacklist_updated = True
+                                st.rerun()
+                        else:
+                            st.warning("⚠️ Уже в черном списке")
+            st.markdown("---")
+        else:
+            if st.session_state.drivers_search:
+                st.info(f"По запросу '{search_query}' ничего не найдено")
             else:
-                st.error("Не удалось загрузить данные о водителях")
+                st.info("Нет доступных водителей для добавления")
 
 # Настройки API
 elif page == "Настройки API":
