@@ -185,31 +185,38 @@ def setup_schedule():
     weekday_afternoon_days = settings.get("weekday_afternoon_days", [0, 1, 2, 3, 4])
     weekend_afternoon_days = settings.get("weekend_afternoon_days", [5, 6])
     
-    # Маппинг дней недели на методы schedule
-    day_mapping = {
-        0: schedule.every().monday,
-        1: schedule.every().tuesday,
-        2: schedule.every().wednesday,
-        3: schedule.every().thursday,
-        4: schedule.every().friday,
-        5: schedule.every().saturday,
-        6: schedule.every().sunday
-    }
+    # Функция для получения метода планировщика по дню недели
+    def get_day_schedule(day):
+        """Возвращает новый объект schedule для указанного дня"""
+        day_methods = {
+            0: schedule.every().monday,
+            1: schedule.every().tuesday,
+            2: schedule.every().wednesday,
+            3: schedule.every().thursday,
+            4: schedule.every().friday,
+            5: schedule.every().saturday,
+            6: schedule.every().sunday
+        }
+        return day_methods.get(day)
     
     # Настраиваем утренние напоминания для выбранных дней
+    # ВАЖНО: создаём НОВЫЙ объект schedule для каждой задачи!
     for day in morning_days:
-        if day in day_mapping:
-            day_mapping[day].at(morning_time).do(send_morning_reminder)
+        day_schedule = get_day_schedule(day)
+        if day_schedule:
+            day_schedule.at(morning_time).do(send_morning_reminder)
     
     # Настраиваем дневные напоминания для будних дней
     for day in weekday_afternoon_days:
-        if day in day_mapping:
-            day_mapping[day].at(afternoon_time).do(send_weekday_afternoon_reminder)
+        day_schedule = get_day_schedule(day)
+        if day_schedule:
+            day_schedule.at(afternoon_time).do(send_weekday_afternoon_reminder)
     
     # Настраиваем дневные напоминания для выходных дней
     for day in weekend_afternoon_days:
-        if day in day_mapping:
-            day_mapping[day].at(afternoon_time).do(send_weekend_afternoon_reminder)
+        day_schedule = get_day_schedule(day)
+        if day_schedule:
+            day_schedule.at(afternoon_time).do(send_weekend_afternoon_reminder)
 
 
 
@@ -321,7 +328,8 @@ elif page == "Статус планировщика":
     if scheduler_status != st.session_state.get('scheduler_running', False):
         st.session_state.scheduler_running = scheduler_status
     
-    # Настраиваем расписание для отображения (если планировщик не запущен)
+    # Настраиваем расписание для отображения
+    # НО только если планировщик не запущен, чтобы не сбросить его задачи
     if not scheduler_status:
         setup_schedule()
     
@@ -494,7 +502,14 @@ elif page == "Статус планировщика":
     # Следующие запуски
     st.markdown("### 📅 Следующие запланированные запуски:")
     
+    # Отладочная информация
     jobs = schedule.jobs
+    st.write(f"🔍 **Отладка**: Всего задач в расписании: {len(jobs)}")
+    
+    # Показываем информацию о каждой задаче
+    for i, job in enumerate(jobs, 1):
+        st.write(f"  Задача {i}: {job.job_func.__name__ if hasattr(job.job_func, '__name__') else 'unknown'} - следующий запуск: {job.next_run}")
+    
     if jobs:
         next_runs = sorted([job.next_run for job in jobs if job.next_run])
         if next_runs:
