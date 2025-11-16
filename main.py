@@ -183,22 +183,37 @@ def load_messages():
 
 def load_settings():
     """
-    Загружает настройки из файла
+    Загружает настройки из файла. Если файл не существует, создает его со стандартными значениями.
     
     Returns:
         dict: Словарь с настройками
     """
     settings_file = os.path.join(os.path.dirname(__file__), 'settings.json')
+    
+    # Стандартные настройки
+    default_settings = {
+        "morning_balance_threshold": 0,
+        "afternoon_balance_threshold": -500
+    }
+    
+    # Если файл не существует, создаем его со стандартными значениями
+    if not os.path.exists(settings_file):
+        try:
+            with open(settings_file, 'w', encoding='utf-8') as f:
+                json.dump(default_settings, f, ensure_ascii=False, indent=2)
+            print(f"✅ Создан файл настроек {settings_file} со стандартными значениями")
+        except Exception as e:
+            print(f"❌ Ошибка при создании файла настроек: {e}")
+            return default_settings
+    
+    # Загружаем настройки из файла
     try:
         with open(settings_file, 'r', encoding='utf-8') as f:
             return json.load(f)
     except Exception as e:
         print(f"❌ Ошибка при загрузке настроек: {e}")
         # Возвращаем настройки по умолчанию
-        return {
-            "morning_balance_threshold": 0,
-            "afternoon_balance_threshold": -500
-        }
+        return default_settings
 
 
 def load_blacklist():
