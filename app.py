@@ -321,25 +321,26 @@ elif page == "Статус планировщика":
     st.markdown("### 👥 Просмотр получателей рассылок")
     st.markdown("Проверьте, кому будут отправлены сообщения при следующем запуске:")
     
-    # Загружаем количество получателей заранее
-    with st.spinner("Загрузка данных..."):
-        settings = load_settings()
-        morning_threshold = settings.get("morning_balance_threshold", 0)
-        afternoon_threshold = settings.get("afternoon_balance_threshold", -500)
-        morning_count = len(get_morning_recipients())
-        weekday_count = len(get_weekday_afternoon_recipients())
-        weekend_count = len(get_weekend_afternoon_recipients())
+    # Загружаем настройки для порогов
+    settings = load_settings()
+    morning_threshold = settings.get("morning_balance_threshold", 0)
+    afternoon_threshold = settings.get("afternoon_balance_threshold", -500)
     
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.metric("Утреннее напоминание", f"{morning_count} чел.", delta=None)
-        if st.button(f"👁️ Показать получателей ({morning_count} чел.)", key="scheduler_show_morning", use_container_width=True):
+        st.subheader("🌅 Утреннее напоминание")
+        if st.button("👁️ Показать получателей", key="scheduler_show_morning", use_container_width=True):
             with st.spinner("Загрузка списка получателей..."):
+                messages = load_messages()
+                message_text = messages.get("morning", "")
                 recipients = get_morning_recipients()
                 if recipients:
                     st.subheader(f"📋 Получатели утреннего напоминания ({len(recipients)} чел.)")
                     st.caption(f"Порог баланса: < {morning_threshold}")
+                    st.markdown("**📝 Текст сообщения:**")
+                    st.text_area("", value=message_text, height=100, disabled=True, key="scheduler_morning_message")
+                    st.markdown("**👥 Список получателей:**")
                     for driver in recipients:
                         st.write(f"- **{driver['fio']}** ({driver['phone']}) - Баланс: {driver['balance']:.2f} ₽")
                 else:
@@ -368,13 +369,18 @@ elif page == "Статус планировщика":
                                 st.write(f"- {driver['fio']} - Баланс: {driver['balance']:.2f} ₽")
     
     with col2:
-        st.metric("Напоминание (будни)", f"{weekday_count} чел.", delta=None)
-        if st.button(f"👁️ Показать получателей ({weekday_count} чел.)", key="scheduler_show_weekday", use_container_width=True):
+        st.subheader("📅 Напоминание (будни)")
+        if st.button("👁️ Показать получателей", key="scheduler_show_weekday", use_container_width=True):
             with st.spinner("Загрузка списка получателей..."):
+                messages = load_messages()
+                message_text = messages.get("weekday_afternoon", "")
                 recipients = get_weekday_afternoon_recipients()
                 if recipients:
                     st.subheader(f"📋 Получатели напоминания в будни ({len(recipients)} чел.)")
                     st.caption(f"Порог баланса: < {afternoon_threshold}")
+                    st.markdown("**📝 Текст сообщения:**")
+                    st.text_area("", value=message_text, height=100, disabled=True, key="scheduler_weekday_message")
+                    st.markdown("**👥 Список получателей:**")
                     for driver in recipients:
                         st.write(f"- **{driver['fio']}** ({driver['phone']}) - Баланс: {driver['balance']:.2f} ₽")
                 else:
@@ -403,13 +409,18 @@ elif page == "Статус планировщика":
                                 st.write(f"- {driver['fio']} - Баланс: {driver['balance']:.2f} ₽")
     
     with col3:
-        st.metric("Напоминание (выходные)", f"{weekend_count} чел.", delta=None)
-        if st.button(f"👁️ Показать получателей ({weekend_count} чел.)", key="scheduler_show_weekend", use_container_width=True):
+        st.subheader("🏖️ Напоминание (выходные)")
+        if st.button("👁️ Показать получателей", key="scheduler_show_weekend", use_container_width=True):
             with st.spinner("Загрузка списка получателей..."):
+                messages = load_messages()
+                message_text = messages.get("weekend_afternoon", "")
                 recipients = get_weekend_afternoon_recipients()
                 if recipients:
                     st.subheader(f"📋 Получатели напоминания в выходные ({len(recipients)} чел.)")
                     st.caption(f"Порог баланса: < {afternoon_threshold}")
+                    st.markdown("**📝 Текст сообщения:**")
+                    st.text_area("", value=message_text, height=100, disabled=True, key="scheduler_weekend_message")
+                    st.markdown("**👥 Список получателей:**")
                     for driver in recipients:
                         st.write(f"- **{driver['fio']}** ({driver['phone']}) - Баланс: {driver['balance']:.2f} ₽")
                 else:
@@ -520,35 +531,17 @@ elif page == "Отправка рассылок":
     morning_threshold = settings.get("morning_balance_threshold", 0)
     afternoon_threshold = settings.get("afternoon_balance_threshold", -500)
     
-    # Инициализируем session state для хранения количества получателей
-    if 'morning_count' not in st.session_state:
-        st.session_state.morning_count = None
-    if 'weekday_count' not in st.session_state:
-        st.session_state.weekday_count = None
-    if 'weekend_count' not in st.session_state:
-        st.session_state.weekend_count = None
-    
     st.markdown("""
     Выберите тип рассылки для отправки прямо сейчас:
     """)
     
-    # Кнопка для загрузки количества получателей
-    if st.button("🔄 Загрузить количество получателей", use_container_width=True):
-        with st.spinner("Загрузка данных..."):
-            st.session_state.morning_count = len(get_morning_recipients())
-            st.session_state.weekday_count = len(get_weekday_afternoon_recipients())
-            st.session_state.weekend_count = len(get_weekend_afternoon_recipients())
-        st.rerun()
-    
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        morning_count_display = f"{st.session_state.morning_count} чел." if st.session_state.morning_count is not None else "нажмите 'Загрузить'"
-        st.metric("Утреннее напоминание", morning_count_display, delta=None)
+        st.subheader("🌅 Утреннее напоминание")
         col1_btn1, col1_btn2 = st.columns(2)
         with col1_btn1:
-            morning_count_btn = f" ({st.session_state.morning_count})" if st.session_state.morning_count is not None else ""
-            if st.button(f"🌅 Отправить{morning_count_btn}", type="primary", use_container_width=True):
+            if st.button("🌅 Отправить", type="primary", use_container_width=True, key="send_morning"):
                 with st.spinner("Отправка утреннего напоминания..."):
                     try:
                         result_container = st.empty()
@@ -557,12 +550,16 @@ elif page == "Отправка рассылок":
                     except Exception as e:
                         st.error(f"❌ Ошибка: {e}")
         with col1_btn2:
-            morning_count_show = f" ({st.session_state.morning_count})" if st.session_state.morning_count is not None else ""
-            if st.button(f"👁️ Показать{morning_count_show}", key="show_morning", use_container_width=True):
+            if st.button("👁️ Показать", key="show_morning", use_container_width=True):
                 with st.spinner("Загрузка списка получателей..."):
+                    messages = load_messages()
+                    message_text = messages.get("morning", "")
                     recipients = get_morning_recipients()
                     if recipients:
                         st.subheader(f"📋 Получатели утреннего напоминания ({len(recipients)} чел.)")
+                        st.markdown("**📝 Текст сообщения:**")
+                        st.text_area("", value=message_text, height=100, disabled=True, key="manual_morning_message")
+                        st.markdown("**👥 Список получателей:**")
                         for driver in recipients:
                             st.write(f"- **{driver['fio']}** ({driver['phone']}) - Баланс: {driver['balance']:.2f} ₽")
                     else:
@@ -592,12 +589,10 @@ elif page == "Отправка рассылок":
         st.caption(f"Баланс < {morning_threshold}")
     
     with col2:
-        weekday_count_display = f"{st.session_state.weekday_count} чел." if st.session_state.weekday_count is not None else "нажмите 'Загрузить'"
-        st.metric("Напоминание (будни)", weekday_count_display, delta=None)
+        st.subheader("📅 Напоминание (будни)")
         col2_btn1, col2_btn2 = st.columns(2)
         with col2_btn1:
-            weekday_count_btn = f" ({st.session_state.weekday_count})" if st.session_state.weekday_count is not None else ""
-            if st.button(f"📅 Отправить{weekday_count_btn}", type="primary", use_container_width=True):
+            if st.button("📅 Отправить", type="primary", use_container_width=True, key="send_weekday"):
                 with st.spinner("Отправка напоминания для будних дней..."):
                     try:
                         result_container = st.empty()
@@ -606,12 +601,16 @@ elif page == "Отправка рассылок":
                     except Exception as e:
                         st.error(f"❌ Ошибка: {e}")
         with col2_btn2:
-            weekday_count_show = f" ({st.session_state.weekday_count})" if st.session_state.weekday_count is not None else ""
-            if st.button(f"👁️ Показать{weekday_count_show}", key="show_weekday", use_container_width=True):
+            if st.button("👁️ Показать", key="show_weekday", use_container_width=True):
                 with st.spinner("Загрузка списка получателей..."):
+                    messages = load_messages()
+                    message_text = messages.get("weekday_afternoon", "")
                     recipients = get_weekday_afternoon_recipients()
                     if recipients:
                         st.subheader(f"📋 Получатели напоминания в будни ({len(recipients)} чел.)")
+                        st.markdown("**📝 Текст сообщения:**")
+                        st.text_area("", value=message_text, height=100, disabled=True, key="manual_weekday_message")
+                        st.markdown("**👥 Список получателей:**")
                         for driver in recipients:
                             st.write(f"- **{driver['fio']}** ({driver['phone']}) - Баланс: {driver['balance']:.2f} ₽")
                     else:
@@ -641,12 +640,10 @@ elif page == "Отправка рассылок":
         st.caption(f"Баланс < {afternoon_threshold}")
     
     with col3:
-        weekend_count_display = f"{st.session_state.weekend_count} чел." if st.session_state.weekend_count is not None else "нажмите 'Загрузить'"
-        st.metric("Напоминание (выходные)", weekend_count_display, delta=None)
+        st.subheader("🏖️ Напоминание (выходные)")
         col3_btn1, col3_btn2 = st.columns(2)
         with col3_btn1:
-            weekend_count_btn = f" ({st.session_state.weekend_count})" if st.session_state.weekend_count is not None else ""
-            if st.button(f"🏖️ Отправить{weekend_count_btn}", type="primary", use_container_width=True):
+            if st.button("🏖️ Отправить", type="primary", use_container_width=True, key="send_weekend"):
                 with st.spinner("Отправка напоминания для выходных дней..."):
                     try:
                         result_container = st.empty()
@@ -655,12 +652,16 @@ elif page == "Отправка рассылок":
                     except Exception as e:
                         st.error(f"❌ Ошибка: {e}")
         with col3_btn2:
-            weekend_count_show = f" ({st.session_state.weekend_count})" if st.session_state.weekend_count is not None else ""
-            if st.button(f"👁️ Показать{weekend_count_show}", key="show_weekend", use_container_width=True):
+            if st.button("👁️ Показать", key="show_weekend", use_container_width=True):
                 with st.spinner("Загрузка списка получателей..."):
+                    messages = load_messages()
+                    message_text = messages.get("weekend_afternoon", "")
                     recipients = get_weekend_afternoon_recipients()
                     if recipients:
                         st.subheader(f"📋 Получатели напоминания в выходные ({len(recipients)} чел.)")
+                        st.markdown("**📝 Текст сообщения:**")
+                        st.text_area("", value=message_text, height=100, disabled=True, key="manual_weekend_message")
+                        st.markdown("**👥 Список получателей:**")
                         for driver in recipients:
                             st.write(f"- **{driver['fio']}** ({driver['phone']}) - Баланс: {driver['balance']:.2f} ₽")
                     else:
