@@ -208,7 +208,12 @@ def load_settings():
     # Стандартные настройки
     default_settings = {
         "morning_balance_threshold": 0,
-        "afternoon_balance_threshold": -500
+        "afternoon_balance_threshold": -500,
+        "morning_time": "09:00",
+        "afternoon_time": "13:00",
+        "morning_days": [0, 1, 2, 3, 4, 5, 6],  # Все дни недели (0=понедельник, 6=воскресенье)
+        "weekday_afternoon_days": [0, 1, 2, 3, 4],  # Понедельник-пятница
+        "weekend_afternoon_days": [5, 6]  # Суббота-воскресенье
     }
     
     # Если файл не существует, создаем его со стандартными значениями
@@ -224,7 +229,12 @@ def load_settings():
     # Загружаем настройки из файла
     try:
         with open(settings_file, 'r', encoding='utf-8') as f:
-            return json.load(f)
+            loaded_settings = json.load(f)
+            # Добавляем недостающие поля из дефолтных настроек
+            for key, value in default_settings.items():
+                if key not in loaded_settings:
+                    loaded_settings[key] = value
+            return loaded_settings
     except Exception as e:
         print(f"❌ Ошибка при загрузке настроек: {e}")
         # Возвращаем настройки по умолчанию
@@ -593,24 +603,63 @@ def setup_scheduler():
     """
     Настраивает планировщик задач
     """
-    # Каждое утро в 9:00
-    schedule.every().day.at("09:00").do(send_morning_reminder)
+    schedule.clear()
     
-    # В 13:00 только в будние дни (понедельник-пятница)
-    schedule.every().monday.at("13:00").do(send_weekday_afternoon_reminder)
-    schedule.every().tuesday.at("13:00").do(send_weekday_afternoon_reminder)
-    schedule.every().wednesday.at("13:00").do(send_weekday_afternoon_reminder)
-    schedule.every().thursday.at("13:00").do(send_weekday_afternoon_reminder)
-    schedule.every().friday.at("13:00").do(send_weekday_afternoon_reminder)
+    # Загружаем настройки времени и дней
+    settings = load_settings()
+    morning_time = settings.get("morning_time", "09:00")
+    afternoon_time = settings.get("afternoon_time", "13:00")
     
-    # В обед по выходным (суббота и воскресенье) в 13:00
-    schedule.every().saturday.at("13:00").do(send_weekend_afternoon_reminder)
-    schedule.every().sunday.at("13:00").do(send_weekend_afternoon_reminder)
+    # Получаем выбранные дни недели (0=понедельник, 6=воскресенье)
+    morning_days = settings.get("morning_days", [0, 1, 2, 3, 4, 5, 6])
+    weekday_afternoon_days = settings.get("weekday_afternoon_days", [0, 1, 2, 3, 4])
+    weekend_afternoon_days = settings.get("weekend_afternoon_days", [5, 6])
+    
+    # Маппинг дней недели на методы schedule
+    day_mapping = {
+        0: schedule.every().monday,
+        1: schedule.every().tuesday,
+        2: schedule.every().wednesday,
+        3: schedule.every().thursday,
+        4: schedule.every().friday,
+        5: schedule.every().saturday,
+        6: schedule.every().sunday
+    }
+    
+    day_names = {
+        0: "понедельник",
+        1: "вторник",
+        2: "среда",
+        3: "четверг",
+        4: "пятница",
+        5: "суббота",
+        6: "воскресенье"
+    }
+    
+    # Настраиваем утренние напоминания для выбранных дней
+    for day in morning_days:
+        if day in day_mapping:
+            day_mapping[day].at(morning_time).do(send_morning_reminder)
+    
+    # Настраиваем дневные напоминания для будних дней
+    for day in weekday_afternoon_days:
+        if day in day_mapping:
+            day_mapping[day].at(afternoon_time).do(send_weekday_afternoon_reminder)
+    
+    # Настраиваем дневные напоминания для выходных дней
+    for day in weekend_afternoon_days:
+        if day in day_mapping:
+            day_mapping[day].at(afternoon_time).do(send_weekend_afternoon_reminder)
+    
+    # Формируем строки для вывода
+    morning_days_str = ", ".join([day_names.get(d, str(d)) for d in sorted(morning_days)])
+    weekday_days_str = ", ".join([day_names.get(d, str(d)) for d in sorted(weekday_afternoon_days)])
+    weekend_days_str = ", ".join([day_names.get(d, str(d)) for d in sorted(weekend_afternoon_days)])
     
     print("✅ Планировщик задач настроен:")
-    print("   - Утреннее напоминание: каждый день в 09:00 (баланс < 0)")
-    print("   - Напоминание в будни: понедельник-пятница в 13:00 (баланс < -500)")
-    print("   - Напоминание в выходные: суббота-воскресенье в 13:00 (баланс < -500)")
+    print(f"   - Утреннее напоминание: {morning_days_str} в {morning_time} (баланс < {settings.get('morning_balance_threshold', 0)})")
+    print(f"   - Напоминание в будни: {weekday_days_str} в {afternoon_time} (баланс < {settings.get('afternoon_balance_threshold', -500)})")
+    print(f"   - Напоминание в выходные: {weekend_days_str} в {afternoon_time} (баланс < {settings.get('afternoon_balance_threshold', -500)})")
 
 
 def main():

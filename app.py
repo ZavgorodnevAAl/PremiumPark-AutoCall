@@ -84,8 +84,21 @@ def save_settings(settings_dict):
     """Сохраняет настройки в файл"""
     settings_file = os.path.join(os.path.dirname(__file__), 'settings.json')
     try:
+        # Загружаем существующие настройки, если файл существует
+        existing_settings = {}
+        if os.path.exists(settings_file):
+            try:
+                with open(settings_file, 'r', encoding='utf-8') as f:
+                    existing_settings = json.load(f)
+            except:
+                pass
+        
+        # Объединяем существующие настройки с новыми
+        existing_settings.update(settings_dict)
+        
+        # Сохраняем объединенные настройки
         with open(settings_file, 'w', encoding='utf-8') as f:
-            json.dump(settings_dict, f, ensure_ascii=False, indent=2)
+            json.dump(existing_settings, f, ensure_ascii=False, indent=2)
         return True
     except Exception as e:
         st.error(f"Ошибка при сохранении: {e}")
@@ -162,28 +175,41 @@ def setup_schedule():
     """Настраивает расписание задач"""
     schedule.clear()
     
-    # Загружаем настройки времени
+    # Загружаем настройки времени и дней
     settings = load_settings()
     morning_time = settings.get("morning_time", "09:00")
     afternoon_time = settings.get("afternoon_time", "13:00")
     
-    # Настраиваем утренние напоминания для каждого дня недели
-    schedule.every().monday.at(morning_time).do(send_morning_reminder)
-    schedule.every().tuesday.at(morning_time).do(send_morning_reminder)
-    schedule.every().wednesday.at(morning_time).do(send_morning_reminder)
-    schedule.every().thursday.at(morning_time).do(send_morning_reminder)
-    schedule.every().friday.at(morning_time).do(send_morning_reminder)
-    schedule.every().saturday.at(morning_time).do(send_morning_reminder)
-    schedule.every().sunday.at(morning_time).do(send_morning_reminder)
+    # Получаем выбранные дни недели (0=понедельник, 6=воскресенье)
+    morning_days = settings.get("morning_days", [0, 1, 2, 3, 4, 5, 6])
+    weekday_afternoon_days = settings.get("weekday_afternoon_days", [0, 1, 2, 3, 4])
+    weekend_afternoon_days = settings.get("weekend_afternoon_days", [5, 6])
     
-    # Настраиваем дневные напоминания
-    schedule.every().monday.at(afternoon_time).do(send_weekday_afternoon_reminder)
-    schedule.every().tuesday.at(afternoon_time).do(send_weekday_afternoon_reminder)
-    schedule.every().wednesday.at(afternoon_time).do(send_weekday_afternoon_reminder)
-    schedule.every().thursday.at(afternoon_time).do(send_weekday_afternoon_reminder)
-    schedule.every().friday.at(afternoon_time).do(send_weekday_afternoon_reminder)
-    schedule.every().saturday.at(afternoon_time).do(send_weekend_afternoon_reminder)
-    schedule.every().sunday.at(afternoon_time).do(send_weekend_afternoon_reminder)
+    # Маппинг дней недели на методы schedule
+    day_mapping = {
+        0: schedule.every().monday,
+        1: schedule.every().tuesday,
+        2: schedule.every().wednesday,
+        3: schedule.every().thursday,
+        4: schedule.every().friday,
+        5: schedule.every().saturday,
+        6: schedule.every().sunday
+    }
+    
+    # Настраиваем утренние напоминания для выбранных дней
+    for day in morning_days:
+        if day in day_mapping:
+            day_mapping[day].at(morning_time).do(send_morning_reminder)
+    
+    # Настраиваем дневные напоминания для будних дней
+    for day in weekday_afternoon_days:
+        if day in day_mapping:
+            day_mapping[day].at(afternoon_time).do(send_weekday_afternoon_reminder)
+    
+    # Настраиваем дневные напоминания для выходных дней
+    for day in weekend_afternoon_days:
+        if day in day_mapping:
+            day_mapping[day].at(afternoon_time).do(send_weekend_afternoon_reminder)
 
 
 def run_scheduler():
@@ -830,13 +856,58 @@ elif page == "Настройки":
     
     st.markdown("---")
     
+    # Выбор дней недели для рассылок
+    st.subheader("📅 Дни недели для рассылок")
+    st.markdown("Выберите дни недели, когда будут отправляться рассылки:")
+    
+    day_names = {
+        0: "Понедельник",
+        1: "Вторник",
+        2: "Среда",
+        3: "Четверг",
+        4: "Пятница",
+        5: "Суббота",
+        6: "Воскресенье"
+    }
+    
+    col_days1, col_days2, col_days3 = st.columns(3)
+    
+    with col_days1:
+        st.markdown("**🌅 Утреннее напоминание**")
+        morning_days = settings.get("morning_days", [0, 1, 2, 3, 4, 5, 6])
+        selected_morning_days = []
+        for day_num, day_name in day_names.items():
+            if st.checkbox(day_name, value=day_num in morning_days, key=f"morning_{day_num}"):
+                selected_morning_days.append(day_num)
+    
+    with col_days2:
+        st.markdown("**📅 Напоминание (будни)**")
+        weekday_afternoon_days = settings.get("weekday_afternoon_days", [0, 1, 2, 3, 4])
+        selected_weekday_days = []
+        for day_num, day_name in day_names.items():
+            if st.checkbox(day_name, value=day_num in weekday_afternoon_days, key=f"weekday_{day_num}"):
+                selected_weekday_days.append(day_num)
+    
+    with col_days3:
+        st.markdown("**🏖️ Напоминание (выходные)**")
+        weekend_afternoon_days = settings.get("weekend_afternoon_days", [5, 6])
+        selected_weekend_days = []
+        for day_num, day_name in day_names.items():
+            if st.checkbox(day_name, value=day_num in weekend_afternoon_days, key=f"weekend_{day_num}"):
+                selected_weekend_days.append(day_num)
+    
+    st.markdown("---")
+    
     # Кнопка сохранения
     if st.button("💾 Сохранить настройки", type="primary", use_container_width=True):
         new_settings = {
             "morning_balance_threshold": morning_threshold,
             "afternoon_balance_threshold": afternoon_threshold,
             "morning_time": morning_time.strftime("%H:%M"),
-            "afternoon_time": afternoon_time.strftime("%H:%M")
+            "afternoon_time": afternoon_time.strftime("%H:%M"),
+            "morning_days": sorted(selected_morning_days),
+            "weekday_afternoon_days": sorted(selected_weekday_days),
+            "weekend_afternoon_days": sorted(selected_weekend_days)
         }
         if save_settings(new_settings):
             st.session_state.settings_saved = True
