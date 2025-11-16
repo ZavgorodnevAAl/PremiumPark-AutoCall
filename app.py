@@ -259,7 +259,39 @@ def start_scheduler():
             st.session_state.scheduler_status_changed = True
             scheduler_state['thread'] = threading.Thread(target=run_scheduler, daemon=True)
             scheduler_state['thread'].start()
-            st.rerun()
+            # Только если это не перезапуск
+            if not st.session_state.get('restarting_scheduler', False):
+                st.rerun()
+
+
+def restart_scheduler():
+    """Перезапускает планировщик"""
+    st.session_state.restarting_scheduler = True
+    
+    # Останавливаем
+    scheduler_state = get_scheduler_state()
+    with scheduler_state['lock']:
+        if scheduler_state['running']:
+            scheduler_state['running'] = False
+            st.session_state.scheduler_running = False
+    
+    # Ждём завершения потока
+    if scheduler_state.get('thread') and scheduler_state['thread'].is_alive():
+        scheduler_state['thread'].join(timeout=2)
+    
+    # Небольшая пауза
+    time.sleep(0.3)
+    
+    # Запускаем заново
+    with scheduler_state['lock']:
+        scheduler_state['running'] = True
+        st.session_state.scheduler_running = True
+        st.session_state.scheduler_status_changed = True
+        scheduler_state['thread'] = threading.Thread(target=run_scheduler, daemon=True)
+        scheduler_state['thread'].start()
+    
+    st.session_state.restarting_scheduler = False
+    st.rerun()
 
 
 def stop_scheduler():
@@ -502,14 +534,7 @@ elif page == "Статус планировщика":
     # Следующие запуски
     st.markdown("### 📅 Следующие запланированные запуски:")
     
-    # Отладочная информация
     jobs = schedule.jobs
-    st.write(f"🔍 **Отладка**: Всего задач в расписании: {len(jobs)}")
-    
-    # Показываем информацию о каждой задаче
-    for i, job in enumerate(jobs, 1):
-        st.write(f"  Задача {i}: {job.job_func.__name__ if hasattr(job.job_func, '__name__') else 'unknown'} - следующий запуск: {job.next_run}")
-    
     if jobs:
         next_runs = sorted([job.next_run for job in jobs if job.next_run])
         if next_runs:
@@ -551,7 +576,20 @@ elif page == "Статус планировщика":
                     mins_until = int(time_until_this.total_seconds() // 60)
                     time_info = f"(через {mins_until} мин.)"
                 
-                st.write(f"{i}. {day_name}, {next_run.strftime('%d.%m.%Y')} в **{next_run.strftime('%H:%M')}** {time_info}")
+                # Определяем тип рассылки по функции задачи
+                job_type = ""
+                for job in jobs:
+                    if job.next_run == next_run:
+                        func_name = job.job_func.__name__ if hasattr(job.job_func, '__name__') else ''
+                        if func_name == 'send_morning_reminder':
+                            job_type = "🌅 Утренняя"
+                        elif func_name == 'send_weekday_afternoon_reminder':
+                            job_type = "📅 Будни"
+                        elif func_name == 'send_weekend_afternoon_reminder':
+                            job_type = "🏖️ Выходные"
+                        break
+                
+                st.write(f"{i}. {day_name}, {next_run.strftime('%d.%m.%Y')} в **{next_run.strftime('%H:%M')}** - {job_type} {time_info}")
             
             # Кнопка обновления (ВНЕ цикла!)
             st.markdown("---")
@@ -938,10 +976,9 @@ elif page == "Настройки":
             st.session_state.settings_saved = True
             # Автоматически перезапускаем планировщик, если он запущен
             if st.session_state.scheduler_running:
-                stop_scheduler()
-                time.sleep(0.5)
-                start_scheduler()
-            st.rerun()
+                restart_scheduler()
+            else:
+                st.rerun()
 
 # Черный список
 elif page == "Черный список":
