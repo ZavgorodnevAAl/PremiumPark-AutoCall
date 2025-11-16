@@ -212,6 +212,15 @@ def setup_schedule():
             day_mapping[day].at(afternoon_time).do(send_weekend_afternoon_reminder)
 
 
+def refresh_schedule_for_display():
+    """Обновляет расписание для отображения без очистки, если планировщик запущен"""
+    scheduler_status = get_scheduler_status()
+    if not scheduler_status:
+        # Если планировщик не запущен, просто настраиваем расписание для отображения
+        setup_schedule()
+    # Если планировщик запущен, расписание уже настроено и не нужно его трогать
+
+
 def run_scheduler():
     """Запускает планировщик в отдельном потоке"""
     scheduler_state = get_scheduler_state()
@@ -276,6 +285,15 @@ page = st.sidebar.radio(
     ["Главная", "Отправка рассылок", "Тестовая отправка", "Редактор шаблонов", "Настройки", "Черный список", "Настройки API", "Статус планировщика"]
 )
 
+# Индикатор статуса планировщика в sidebar
+st.sidebar.markdown("---")
+scheduler_status = get_scheduler_status()
+if scheduler_status:
+    st.sidebar.success("🟢 Планировщик запущен")
+else:
+    st.sidebar.warning("🔴 Планировщик остановлен")
+st.sidebar.markdown("---")
+
 # Сохраняем текущую страницу и сбрасываем таймер при смене страницы
 if 'current_page' not in st.session_state:
     st.session_state.current_page = page
@@ -309,6 +327,9 @@ elif page == "Статус планировщика":
     scheduler_status = get_scheduler_status()
     if scheduler_status != st.session_state.get('scheduler_running', False):
         st.session_state.scheduler_running = scheduler_status
+    
+    # Обновляем расписание для отображения
+    refresh_schedule_for_display()
     
     # Показываем сообщение об изменении статуса
     if st.session_state.scheduler_status_changed:
@@ -911,6 +932,11 @@ elif page == "Настройки":
         }
         if save_settings(new_settings):
             st.session_state.settings_saved = True
+            # Автоматически перезапускаем планировщик, если он запущен
+            if st.session_state.scheduler_running:
+                stop_scheduler()
+                time.sleep(0.5)
+                start_scheduler()
             st.rerun()
 
 # Черный список
