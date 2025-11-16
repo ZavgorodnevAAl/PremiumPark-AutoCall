@@ -8,7 +8,7 @@ import json
 import os
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 import schedule
 from main import (
     send_morning_reminder,
@@ -212,13 +212,6 @@ def setup_schedule():
             day_mapping[day].at(afternoon_time).do(send_weekend_afternoon_reminder)
 
 
-def refresh_schedule_for_display():
-    """Обновляет расписание для отображения без очистки, если планировщик запущен"""
-    scheduler_status = get_scheduler_status()
-    if not scheduler_status:
-        # Если планировщик не запущен, просто настраиваем расписание для отображения
-        setup_schedule()
-    # Если планировщик запущен, расписание уже настроено и не нужно его трогать
 
 
 def run_scheduler():
@@ -328,8 +321,9 @@ elif page == "Статус планировщика":
     if scheduler_status != st.session_state.get('scheduler_running', False):
         st.session_state.scheduler_running = scheduler_status
     
-    # Обновляем расписание для отображения
-    refresh_schedule_for_display()
+    # Настраиваем расписание для отображения (если планировщик не запущен)
+    if not scheduler_status:
+        setup_schedule()
     
     # Показываем сообщение об изменении статуса
     if st.session_state.scheduler_status_changed:
@@ -500,50 +494,49 @@ elif page == "Статус планировщика":
     # Следующие запуски
     st.markdown("### 📅 Следующие запланированные запуски:")
     
-    if st.session_state.scheduler_running:
-        jobs = schedule.jobs
-        if jobs:
-            next_runs = sorted([job.next_run for job in jobs if job.next_run])
-            if next_runs:
-                # Ближайший запуск
-                nearest = next_runs[0]
-                now = datetime.now()
-                time_until = nearest - now
+    jobs = schedule.jobs
+    if jobs:
+        next_runs = sorted([job.next_run for job in jobs if job.next_run])
+        if next_runs:
+            # Ближайший запуск
+            nearest = next_runs[0]
+            now = datetime.now()
+            time_until = nearest - now
+            
+            # Форматируем время до запуска
+            hours = int(time_until.total_seconds() // 3600)
+            minutes = int((time_until.total_seconds() % 3600) // 60)
+            
+            if hours > 24:
+                days = hours // 24
+                hours = hours % 24
+                time_str = f"{days} дн. {hours} ч. {minutes} мин."
+            elif hours > 0:
+                time_str = f"{hours} ч. {minutes} мин."
+            else:
+                time_str = f"{minutes} мин."
+            
+            st.success(f"⏰ **Ближайший запуск**: {nearest.strftime('%d.%m.%Y в %H:%M')} (через {time_str})")
+            
+            st.markdown("---")
+            st.markdown("**Следующие запуски:**")
+            
+            # Показываем следующие 10 запусков
+            for i, next_run in enumerate(next_runs[:10], 1):
+                day_name = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'][next_run.weekday()]
+                time_until_this = next_run - now
+                hours_until = int(time_until_this.total_seconds() // 3600)
                 
-                # Форматируем время до запуска
-                hours = int(time_until.total_seconds() // 3600)
-                minutes = int((time_until.total_seconds() % 3600) // 60)
-                
-                if hours > 24:
-                    days = hours // 24
-                    hours = hours % 24
-                    time_str = f"{days} дн. {hours} ч. {minutes} мин."
-                elif hours > 0:
-                    time_str = f"{hours} ч. {minutes} мин."
+                if hours_until > 24:
+                    days_until = hours_until // 24
+                    time_info = f"(через {days_until} дн.)"
+                elif hours_until > 0:
+                    time_info = f"(через {hours_until} ч.)"
                 else:
-                    time_str = f"{minutes} мин."
+                    mins_until = int(time_until_this.total_seconds() // 60)
+                    time_info = f"(через {mins_until} мин.)"
                 
-                st.success(f"⏰ **Ближайший запуск**: {nearest.strftime('%d.%m.%Y в %H:%M')} (через {time_str})")
-                
-                st.markdown("---")
-                st.markdown("**Следующие запуски:**")
-                
-                # Показываем следующие 6 запусков
-                for i, next_run in enumerate(next_runs[:6], 1):
-                    day_name = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'][next_run.weekday()]
-                    time_until_this = next_run - now
-                    hours_until = int(time_until_this.total_seconds() // 3600)
-                    
-                    if hours_until > 24:
-                        days_until = hours_until // 24
-                        time_info = f"(через {days_until} дн.)"
-                    elif hours_until > 0:
-                        time_info = f"(через {hours_until} ч.)"
-                    else:
-                        mins_until = int(time_until_this.total_seconds() // 60)
-                        time_info = f"(через {mins_until} мин.)"
-                    
-                    st.write(f"{i}. {day_name}, {next_run.strftime('%d.%m.%Y')} в **{next_run.strftime('%H:%M')}** {time_info}")
+                st.write(f"{i}. {day_name}, {next_run.strftime('%d.%m.%Y')} в **{next_run.strftime('%H:%M')}** {time_info}")
                 
                 current_time = time.time()
                 time_since_refresh = current_time - st.session_state.last_refresh_time
