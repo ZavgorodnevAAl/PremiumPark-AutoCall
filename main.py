@@ -405,6 +405,159 @@ def send_weekend_afternoon_reminder():
         traceback.print_exc()
 
 
+def get_morning_recipients():
+    """
+    Возвращает список получателей для утреннего напоминания (без отправки)
+    
+    Returns:
+        list: Список словарей с данными водителей {'fio': str, 'phone': str, 'balance': float}
+    """
+    try:
+        settings = load_settings()
+        threshold = float(settings.get("morning_balance_threshold", 0))
+        
+        drivers = get_drivers()
+        if not drivers:
+            return []
+        
+        filtered_drivers = filter_drivers(drivers, balance_threshold=threshold)
+        return filtered_drivers
+    except Exception as e:
+        print(f"❌ Ошибка при получении списка получателей утреннего напоминания: {e}")
+        return []
+
+
+def get_weekday_afternoon_recipients():
+    """
+    Возвращает список получателей для напоминания в будний день (без отправки)
+    
+    Returns:
+        list: Список словарей с данными водителей {'fio': str, 'phone': str, 'balance': float}
+    """
+    try:
+        settings = load_settings()
+        threshold = float(settings.get("afternoon_balance_threshold", -500))
+        
+        drivers = get_drivers()
+        if not drivers:
+            return []
+        
+        filtered_drivers = filter_drivers(drivers, balance_threshold=threshold)
+        return filtered_drivers
+    except Exception as e:
+        print(f"❌ Ошибка при получении списка получателей напоминания в будний день: {e}")
+        return []
+
+
+def get_weekend_afternoon_recipients():
+    """
+    Возвращает список получателей для напоминания в выходной день (без отправки)
+    
+    Returns:
+        list: Список словарей с данными водителей {'fio': str, 'phone': str, 'balance': float}
+    """
+    try:
+        settings = load_settings()
+        threshold = float(settings.get("afternoon_balance_threshold", -500))
+        
+        drivers = get_drivers()
+        if not drivers:
+            return []
+        
+        filtered_drivers = filter_drivers(drivers, balance_threshold=threshold)
+        return filtered_drivers
+    except Exception as e:
+        print(f"❌ Ошибка при получении списка получателей напоминания в выходной день: {e}")
+        return []
+
+
+def get_filtered_drivers_info(balance_threshold: float):
+    """
+    Возвращает информацию об отфильтрованных водителях с указанием причин исключения
+    
+    Args:
+        balance_threshold: Порог баланса
+    
+    Returns:
+        dict: Словарь с категориями отфильтрованных водителей:
+            - 'blacklist': водители в черном списке
+            - 'not_working': водители не работают
+            - 'skip_flag': водители с пометкой "не блокировать" или "не беспокоить"
+            - 'no_phone': водители без телефона
+    """
+    try:
+        drivers = get_drivers()
+        if not drivers:
+            return {
+                'blacklist': [],
+                'not_working': [],
+                'skip_flag': [],
+                'no_phone': []
+            }
+        
+        blacklist_phones = get_blacklist_phones()
+        filtered_info = {
+            'blacklist': [],
+            'not_working': [],
+            'skip_flag': [],
+            'no_phone': []
+        }
+        
+        for driver in drivers:
+            try:
+                balance = float(driver.get('Balance', 0) or 0)
+                
+                # Проверяем только водителей с балансом меньше порога
+                if balance >= balance_threshold:
+                    continue
+                
+                fio = driver.get('FIO', '')
+                phone = driver.get('PhoneNumber', '')
+                phone_normalized = normalize_phone(phone) if phone else ''
+                is_working = (str(driver.get('Status', '')).lower() == 'работает') and \
+                            driver.get('NameConditionWork', '') != ''
+                skip = 'не блокировать' in fio.lower() or 'не беспокоить' in fio.lower()
+                
+                # Категоризируем причины исключения
+                if phone_normalized and phone_normalized in blacklist_phones:
+                    filtered_info['blacklist'].append({
+                        'fio': fio,
+                        'phone': phone_normalized,
+                        'balance': balance
+                    })
+                elif not phone or not phone_normalized:
+                    filtered_info['no_phone'].append({
+                        'fio': fio,
+                        'phone': phone or 'Нет телефона',
+                        'balance': balance
+                    })
+                elif skip:
+                    filtered_info['skip_flag'].append({
+                        'fio': fio,
+                        'phone': phone_normalized,
+                        'balance': balance
+                    })
+                elif not is_working:
+                    filtered_info['not_working'].append({
+                        'fio': fio,
+                        'phone': phone_normalized,
+                        'balance': balance,
+                        'status': driver.get('Status', 'Неизвестно')
+                    })
+            except Exception:
+                continue
+        
+        return filtered_info
+    except Exception as e:
+        print(f"❌ Ошибка при получении информации об отфильтрованных водителях: {e}")
+        return {
+            'blacklist': [],
+            'not_working': [],
+            'skip_flag': [],
+            'no_phone': []
+        }
+
+
 def send_test_message(phone: str = None):
     """
     Тестовая функция для отправки сообщения на указанный номер

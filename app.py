@@ -21,7 +21,11 @@ from main import (
     load_settings,
     load_blacklist,
     get_drivers,
-    filter_drivers
+    filter_drivers,
+    get_morning_recipients,
+    get_weekday_afternoon_recipients,
+    get_weekend_afternoon_recipients,
+    get_filtered_drivers_info
 )
 
 # Настройка страницы
@@ -311,6 +315,130 @@ elif page == "Статус планировщика":
         st.warning("🔴 Планировщик остановлен")
         st.info("Нажмите кнопку 'Запустить планировщик' для начала автоматических рассылок")
     
+    st.markdown("---")
+    
+    # Кнопки для просмотра получателей
+    st.markdown("### 👥 Просмотр получателей рассылок")
+    st.markdown("Проверьте, кому будут отправлены сообщения при следующем запуске:")
+    
+    # Загружаем количество получателей заранее
+    with st.spinner("Загрузка данных..."):
+        settings = load_settings()
+        morning_threshold = settings.get("morning_balance_threshold", 0)
+        afternoon_threshold = settings.get("afternoon_balance_threshold", -500)
+        morning_count = len(get_morning_recipients())
+        weekday_count = len(get_weekday_afternoon_recipients())
+        weekend_count = len(get_weekend_afternoon_recipients())
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("Утреннее напоминание", f"{morning_count} чел.", delta=None)
+        if st.button(f"👁️ Показать получателей ({morning_count} чел.)", key="scheduler_show_morning", use_container_width=True):
+            with st.spinner("Загрузка списка получателей..."):
+                recipients = get_morning_recipients()
+                if recipients:
+                    st.subheader(f"📋 Получатели утреннего напоминания ({len(recipients)} чел.)")
+                    st.caption(f"Порог баланса: < {morning_threshold}")
+                    for driver in recipients:
+                        st.write(f"- **{driver['fio']}** ({driver['phone']}) - Баланс: {driver['balance']:.2f} ₽")
+                else:
+                    st.info(f"Нет получателей с балансом < {morning_threshold}")
+                
+                # Показываем отфильтрованных водителей
+                filtered_info = get_filtered_drivers_info(morning_threshold)
+                total_filtered = sum(len(v) for v in filtered_info.values())
+                if total_filtered > 0:
+                    with st.expander(f"🚫 Отфильтровано ({total_filtered} чел.)", expanded=False):
+                        if filtered_info['blacklist']:
+                            st.write(f"**В черном списке ({len(filtered_info['blacklist'])}):**")
+                            for driver in filtered_info['blacklist']:
+                                st.write(f"- {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']:.2f} ₽")
+                        if filtered_info['not_working']:
+                            st.write(f"**Не работают ({len(filtered_info['not_working'])}):**")
+                            for driver in filtered_info['not_working']:
+                                st.write(f"- {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']:.2f} ₽ (Статус: {driver.get('status', 'Неизвестно')})")
+                        if filtered_info['skip_flag']:
+                            st.write(f"**С пометкой 'не блокировать/не беспокоить' ({len(filtered_info['skip_flag'])}):**")
+                            for driver in filtered_info['skip_flag']:
+                                st.write(f"- {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']:.2f} ₽")
+                        if filtered_info['no_phone']:
+                            st.write(f"**Без телефона ({len(filtered_info['no_phone'])}):**")
+                            for driver in filtered_info['no_phone']:
+                                st.write(f"- {driver['fio']} - Баланс: {driver['balance']:.2f} ₽")
+    
+    with col2:
+        st.metric("Напоминание (будни)", f"{weekday_count} чел.", delta=None)
+        if st.button(f"👁️ Показать получателей ({weekday_count} чел.)", key="scheduler_show_weekday", use_container_width=True):
+            with st.spinner("Загрузка списка получателей..."):
+                recipients = get_weekday_afternoon_recipients()
+                if recipients:
+                    st.subheader(f"📋 Получатели напоминания в будни ({len(recipients)} чел.)")
+                    st.caption(f"Порог баланса: < {afternoon_threshold}")
+                    for driver in recipients:
+                        st.write(f"- **{driver['fio']}** ({driver['phone']}) - Баланс: {driver['balance']:.2f} ₽")
+                else:
+                    st.info(f"Нет получателей с балансом < {afternoon_threshold}")
+                
+                # Показываем отфильтрованных водителей
+                filtered_info = get_filtered_drivers_info(afternoon_threshold)
+                total_filtered = sum(len(v) for v in filtered_info.values())
+                if total_filtered > 0:
+                    with st.expander(f"🚫 Отфильтровано ({total_filtered} чел.)", expanded=False):
+                        if filtered_info['blacklist']:
+                            st.write(f"**В черном списке ({len(filtered_info['blacklist'])}):**")
+                            for driver in filtered_info['blacklist']:
+                                st.write(f"- {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']:.2f} ₽")
+                        if filtered_info['not_working']:
+                            st.write(f"**Не работают ({len(filtered_info['not_working'])}):**")
+                            for driver in filtered_info['not_working']:
+                                st.write(f"- {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']:.2f} ₽ (Статус: {driver.get('status', 'Неизвестно')})")
+                        if filtered_info['skip_flag']:
+                            st.write(f"**С пометкой 'не блокировать/не беспокоить' ({len(filtered_info['skip_flag'])}):**")
+                            for driver in filtered_info['skip_flag']:
+                                st.write(f"- {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']:.2f} ₽")
+                        if filtered_info['no_phone']:
+                            st.write(f"**Без телефона ({len(filtered_info['no_phone'])}):**")
+                            for driver in filtered_info['no_phone']:
+                                st.write(f"- {driver['fio']} - Баланс: {driver['balance']:.2f} ₽")
+    
+    with col3:
+        st.metric("Напоминание (выходные)", f"{weekend_count} чел.", delta=None)
+        if st.button(f"👁️ Показать получателей ({weekend_count} чел.)", key="scheduler_show_weekend", use_container_width=True):
+            with st.spinner("Загрузка списка получателей..."):
+                recipients = get_weekend_afternoon_recipients()
+                if recipients:
+                    st.subheader(f"📋 Получатели напоминания в выходные ({len(recipients)} чел.)")
+                    st.caption(f"Порог баланса: < {afternoon_threshold}")
+                    for driver in recipients:
+                        st.write(f"- **{driver['fio']}** ({driver['phone']}) - Баланс: {driver['balance']:.2f} ₽")
+                else:
+                    st.info(f"Нет получателей с балансом < {afternoon_threshold}")
+                
+                # Показываем отфильтрованных водителей
+                filtered_info = get_filtered_drivers_info(afternoon_threshold)
+                total_filtered = sum(len(v) for v in filtered_info.values())
+                if total_filtered > 0:
+                    with st.expander(f"🚫 Отфильтровано ({total_filtered} чел.)", expanded=False):
+                        if filtered_info['blacklist']:
+                            st.write(f"**В черном списке ({len(filtered_info['blacklist'])}):**")
+                            for driver in filtered_info['blacklist']:
+                                st.write(f"- {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']:.2f} ₽")
+                        if filtered_info['not_working']:
+                            st.write(f"**Не работают ({len(filtered_info['not_working'])}):**")
+                            for driver in filtered_info['not_working']:
+                                st.write(f"- {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']:.2f} ₽ (Статус: {driver.get('status', 'Неизвестно')})")
+                        if filtered_info['skip_flag']:
+                            st.write(f"**С пометкой 'не блокировать/не беспокоить' ({len(filtered_info['skip_flag'])}):**")
+                            for driver in filtered_info['skip_flag']:
+                                st.write(f"- {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']:.2f} ₽")
+                        if filtered_info['no_phone']:
+                            st.write(f"**Без телефона ({len(filtered_info['no_phone'])}):**")
+                            for driver in filtered_info['no_phone']:
+                                st.write(f"- {driver['fio']} - Баланс: {driver['balance']:.2f} ₽")
+    
+    st.markdown("---")
+    
     # Следующие запуски
     st.markdown("### 📅 Следующие запланированные запуски:")
     
@@ -392,6 +520,12 @@ elif page == "Отправка рассылок":
     morning_threshold = settings.get("morning_balance_threshold", 0)
     afternoon_threshold = settings.get("afternoon_balance_threshold", -500)
     
+    # Загружаем количество получателей заранее
+    with st.spinner("Загрузка данных..."):
+        morning_count = len(get_morning_recipients())
+        weekday_count = len(get_weekday_afternoon_recipients())
+        weekend_count = len(get_weekend_afternoon_recipients())
+    
     st.markdown("""
     Выберите тип рассылки для отправки прямо сейчас:
     """)
@@ -399,36 +533,141 @@ elif page == "Отправка рассылок":
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        if st.button("🌅 Утреннее напоминание", type="primary", use_container_width=True):
-            with st.spinner("Отправка утреннего напоминания..."):
-                try:
-                    result_container = st.empty()
-                    send_morning_reminder()
-                    result_container.success("✅ Утреннее напоминание отправлено! Проверьте консоль для деталей.")
-                except Exception as e:
-                    st.error(f"❌ Ошибка: {e}")
+        st.metric("Утреннее напоминание", f"{morning_count} чел.", delta=None)
+        col1_btn1, col1_btn2 = st.columns(2)
+        with col1_btn1:
+            if st.button(f"🌅 Отправить ({morning_count})", type="primary", use_container_width=True):
+                with st.spinner("Отправка утреннего напоминания..."):
+                    try:
+                        result_container = st.empty()
+                        send_morning_reminder()
+                        result_container.success("✅ Утреннее напоминание отправлено! Проверьте консоль для деталей.")
+                    except Exception as e:
+                        st.error(f"❌ Ошибка: {e}")
+        with col1_btn2:
+            if st.button(f"👁️ Показать ({morning_count})", key="show_morning", use_container_width=True):
+                with st.spinner("Загрузка списка получателей..."):
+                    recipients = get_morning_recipients()
+                    if recipients:
+                        st.subheader(f"📋 Получатели утреннего напоминания ({len(recipients)} чел.)")
+                        for driver in recipients:
+                            st.write(f"- **{driver['fio']}** ({driver['phone']}) - Баланс: {driver['balance']:.2f} ₽")
+                    else:
+                        st.info(f"Нет получателей с балансом < {morning_threshold}")
+                    
+                    # Показываем отфильтрованных водителей
+                    filtered_info = get_filtered_drivers_info(morning_threshold)
+                    total_filtered = sum(len(v) for v in filtered_info.values())
+                    if total_filtered > 0:
+                        with st.expander(f"🚫 Отфильтровано ({total_filtered} чел.)", expanded=False):
+                            if filtered_info['blacklist']:
+                                st.write(f"**В черном списке ({len(filtered_info['blacklist'])}):**")
+                                for driver in filtered_info['blacklist']:
+                                    st.write(f"- {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']:.2f} ₽")
+                            if filtered_info['not_working']:
+                                st.write(f"**Не работают ({len(filtered_info['not_working'])}):**")
+                                for driver in filtered_info['not_working']:
+                                    st.write(f"- {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']:.2f} ₽ (Статус: {driver.get('status', 'Неизвестно')})")
+                            if filtered_info['skip_flag']:
+                                st.write(f"**С пометкой 'не блокировать/не беспокоить' ({len(filtered_info['skip_flag'])}):**")
+                                for driver in filtered_info['skip_flag']:
+                                    st.write(f"- {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']:.2f} ₽")
+                            if filtered_info['no_phone']:
+                                st.write(f"**Без телефона ({len(filtered_info['no_phone'])}):**")
+                                for driver in filtered_info['no_phone']:
+                                    st.write(f"- {driver['fio']} - Баланс: {driver['balance']:.2f} ₽")
         st.caption(f"Баланс < {morning_threshold}")
     
     with col2:
-        if st.button("📅 Напоминание (будни)", type="primary", use_container_width=True):
-            with st.spinner("Отправка напоминания для будних дней..."):
-                try:
-                    result_container = st.empty()
-                    send_weekday_afternoon_reminder()
-                    result_container.success("✅ Напоминание отправлено! Проверьте консоль для деталей.")
-                except Exception as e:
-                    st.error(f"❌ Ошибка: {e}")
+        st.metric("Напоминание (будни)", f"{weekday_count} чел.", delta=None)
+        col2_btn1, col2_btn2 = st.columns(2)
+        with col2_btn1:
+            if st.button(f"📅 Отправить ({weekday_count})", type="primary", use_container_width=True):
+                with st.spinner("Отправка напоминания для будних дней..."):
+                    try:
+                        result_container = st.empty()
+                        send_weekday_afternoon_reminder()
+                        result_container.success("✅ Напоминание отправлено! Проверьте консоль для деталей.")
+                    except Exception as e:
+                        st.error(f"❌ Ошибка: {e}")
+        with col2_btn2:
+            if st.button(f"👁️ Показать ({weekday_count})", key="show_weekday", use_container_width=True):
+                with st.spinner("Загрузка списка получателей..."):
+                    recipients = get_weekday_afternoon_recipients()
+                    if recipients:
+                        st.subheader(f"📋 Получатели напоминания в будни ({len(recipients)} чел.)")
+                        for driver in recipients:
+                            st.write(f"- **{driver['fio']}** ({driver['phone']}) - Баланс: {driver['balance']:.2f} ₽")
+                    else:
+                        st.info(f"Нет получателей с балансом < {afternoon_threshold}")
+                    
+                    # Показываем отфильтрованных водителей
+                    filtered_info = get_filtered_drivers_info(afternoon_threshold)
+                    total_filtered = sum(len(v) for v in filtered_info.values())
+                    if total_filtered > 0:
+                        with st.expander(f"🚫 Отфильтровано ({total_filtered} чел.)", expanded=False):
+                            if filtered_info['blacklist']:
+                                st.write(f"**В черном списке ({len(filtered_info['blacklist'])}):**")
+                                for driver in filtered_info['blacklist']:
+                                    st.write(f"- {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']:.2f} ₽")
+                            if filtered_info['not_working']:
+                                st.write(f"**Не работают ({len(filtered_info['not_working'])}):**")
+                                for driver in filtered_info['not_working']:
+                                    st.write(f"- {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']:.2f} ₽ (Статус: {driver.get('status', 'Неизвестно')})")
+                            if filtered_info['skip_flag']:
+                                st.write(f"**С пометкой 'не блокировать/не беспокоить' ({len(filtered_info['skip_flag'])}):**")
+                                for driver in filtered_info['skip_flag']:
+                                    st.write(f"- {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']:.2f} ₽")
+                            if filtered_info['no_phone']:
+                                st.write(f"**Без телефона ({len(filtered_info['no_phone'])}):**")
+                                for driver in filtered_info['no_phone']:
+                                    st.write(f"- {driver['fio']} - Баланс: {driver['balance']:.2f} ₽")
         st.caption(f"Баланс < {afternoon_threshold}")
     
     with col3:
-        if st.button("🏖️ Напоминание (выходные)", type="primary", use_container_width=True):
-            with st.spinner("Отправка напоминания для выходных дней..."):
-                try:
-                    result_container = st.empty()
-                    send_weekend_afternoon_reminder()
-                    result_container.success("✅ Напоминание отправлено! Проверьте консоль для деталей.")
-                except Exception as e:
-                    st.error(f"❌ Ошибка: {e}")
+        st.metric("Напоминание (выходные)", f"{weekend_count} чел.", delta=None)
+        col3_btn1, col3_btn2 = st.columns(2)
+        with col3_btn1:
+            if st.button(f"🏖️ Отправить ({weekend_count})", type="primary", use_container_width=True):
+                with st.spinner("Отправка напоминания для выходных дней..."):
+                    try:
+                        result_container = st.empty()
+                        send_weekend_afternoon_reminder()
+                        result_container.success("✅ Напоминание отправлено! Проверьте консоль для деталей.")
+                    except Exception as e:
+                        st.error(f"❌ Ошибка: {e}")
+        with col3_btn2:
+            if st.button(f"👁️ Показать ({weekend_count})", key="show_weekend", use_container_width=True):
+                with st.spinner("Загрузка списка получателей..."):
+                    recipients = get_weekend_afternoon_recipients()
+                    if recipients:
+                        st.subheader(f"📋 Получатели напоминания в выходные ({len(recipients)} чел.)")
+                        for driver in recipients:
+                            st.write(f"- **{driver['fio']}** ({driver['phone']}) - Баланс: {driver['balance']:.2f} ₽")
+                    else:
+                        st.info(f"Нет получателей с балансом < {afternoon_threshold}")
+                    
+                    # Показываем отфильтрованных водителей
+                    filtered_info = get_filtered_drivers_info(afternoon_threshold)
+                    total_filtered = sum(len(v) for v in filtered_info.values())
+                    if total_filtered > 0:
+                        with st.expander(f"🚫 Отфильтровано ({total_filtered} чел.)", expanded=False):
+                            if filtered_info['blacklist']:
+                                st.write(f"**В черном списке ({len(filtered_info['blacklist'])}):**")
+                                for driver in filtered_info['blacklist']:
+                                    st.write(f"- {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']:.2f} ₽")
+                            if filtered_info['not_working']:
+                                st.write(f"**Не работают ({len(filtered_info['not_working'])}):**")
+                                for driver in filtered_info['not_working']:
+                                    st.write(f"- {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']:.2f} ₽ (Статус: {driver.get('status', 'Неизвестно')})")
+                            if filtered_info['skip_flag']:
+                                st.write(f"**С пометкой 'не блокировать/не беспокоить' ({len(filtered_info['skip_flag'])}):**")
+                                for driver in filtered_info['skip_flag']:
+                                    st.write(f"- {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']:.2f} ₽")
+                            if filtered_info['no_phone']:
+                                st.write(f"**Без телефона ({len(filtered_info['no_phone'])}):**")
+                                for driver in filtered_info['no_phone']:
+                                    st.write(f"- {driver['fio']} - Баланс: {driver['balance']:.2f} ₽")
         st.caption(f"Баланс < {afternoon_threshold}")
     
     st.markdown("---")
