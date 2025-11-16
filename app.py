@@ -537,16 +537,12 @@ elif page == "Статус планировщика":
                     time_info = f"(через {mins_until} мин.)"
                 
                 st.write(f"{i}. {day_name}, {next_run.strftime('%d.%m.%Y')} в **{next_run.strftime('%H:%M')}** {time_info}")
-                
-                current_time = time.time()
-                time_since_refresh = current_time - st.session_state.last_refresh_time
-                seconds_until_refresh = max(0, 30 - int(time_since_refresh))
-                
-                if st.button("🔄 Обновить страницу", use_container_width=True, key="refresh_scheduler"):
-                    st.session_state.last_refresh_time = time.time()
-                    st.rerun()
-            else:
-                st.write("Нет запланированных задач")
+            
+            # Кнопка обновления (ВНЕ цикла!)
+            st.markdown("---")
+            if st.button("🔄 Обновить страницу", use_container_width=True, key="refresh_scheduler"):
+                st.session_state.last_refresh_time = time.time()
+                st.rerun()
         else:
             st.write("Нет запланированных задач")
         
