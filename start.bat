@@ -1,79 +1,79 @@
 @echo off
-echo Запуск Premium Park - Автоматические напоминания...
+echo Starting Premium Park - Automatic Reminders...
 echo.
 
-REM Проверяем наличие Python
+REM Check for Python
 python --version >nul 2>&1
 if errorlevel 1 (
-    echo [ОШИБКА] Python не найден!
-    echo Установите Python с https://www.python.org/
+    echo [ERROR] Python not found!
+    echo Install Python from https://www.python.org/
     pause
     exit /b 1
 )
 
-REM Проверяем наличие виртуального окружения
+REM Check for virtual environment
 if exist "venv\Scripts\activate.bat" (
-    echo [OK] Виртуальное окружение найдено
+    echo [OK] Virtual environment found
     call venv\Scripts\activate.bat
 ) else (
-    echo [INFO] Виртуальное окружение не найдено, создаем...
+    echo [INFO] Virtual environment not found, creating...
     python -m venv venv
     if errorlevel 1 (
-        echo [ОШИБКА] Ошибка при создании виртуального окружения
+        echo [ERROR] Error creating virtual environment
         pause
         exit /b 1
     )
     call venv\Scripts\activate.bat
-    echo [OK] Виртуальное окружение создано
+    echo [OK] Virtual environment created
 )
 
-REM Проверяем наличие requirements.txt
+REM Check for requirements.txt
 if not exist "app\requirements.txt" (
-    echo [ОШИБКА] Файл app\requirements.txt не найден!
+    echo [ERROR] File app\requirements.txt not found!
     pause
     exit /b 1
 )
 
-REM Проверяем установлен ли streamlit (как индикатор установленных зависимостей)
+REM Check if streamlit is installed (as indicator of installed dependencies)
 python -c "import streamlit" >nul 2>&1
 if errorlevel 1 (
-    echo [INFO] Устанавливаем зависимости...
-    echo Это может занять несколько минут при первом запуске...
+    echo [INFO] Installing dependencies...
+    echo This may take a few minutes on first run...
     python -m pip install --upgrade pip
     python -m pip install -r app\requirements.txt
     if errorlevel 1 (
-        echo [ОШИБКА] Ошибка при установке зависимостей
+        echo [ERROR] Error installing dependencies
         pause
         exit /b 1
     )
-    echo [OK] Зависимости установлены
+    echo [OK] Dependencies installed
 ) else (
-    echo [OK] Зависимости уже установлены
+    echo [OK] Dependencies already installed
 )
 
-REM Проверяем наличие и заполненность .env файла
+REM Check for .env file existence and completeness
 if not exist "app\.env" (
     echo.
-    echo [WARNING] Файл app\.env не найден!
-    echo [INFO] Запускаем настройку переменных окружения...
+    echo [WARNING] File app\.env not found!
+    echo [INFO] Starting environment variables setup...
     echo.
     python app\setup_env.py
     if errorlevel 1 (
-        echo [ОШИБКА] Ошибка при настройке .env
+        echo [ERROR] Error setting up .env
         pause
         exit /b 1
     )
 ) else (
-    REM Проверяем, заполнен ли .env
+    REM Check if .env is complete
     python app\setup_env.py --check
     if errorlevel 1 (
         echo.
-        echo [WARNING] Файл app\.env не полностью заполнен!
-        echo [INFO] Запускаем настройку переменных окружения...
+        echo [WARNING] File app\.env is not fully configured!
+        echo [INFO] Starting environment variables setup...
         echo.
         python app\setup_env.py
         if errorlevel 1 (
-            echo [ОШИБКА] Ошибка при настройке .env
+            echo [ERROR] Error setting up .env
             pause
             exit /b 1
         )
@@ -81,11 +81,11 @@ if not exist "app\.env" (
 )
 
 echo.
-echo [INFO] Откроется браузер с веб-интерфейсом
-echo [INFO] Для остановки нажмите Ctrl+C
+echo [INFO] Browser will open with web interface
+echo [INFO] Press Ctrl+C to stop
 echo.
 
-REM Запускаем приложение
+REM Start application
 cd app
 python -m streamlit run app.py
 cd ..
