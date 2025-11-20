@@ -7,14 +7,18 @@ import sys
 
 def check_env_exists():
     """Проверяет существование .env файла"""
-    return os.path.exists('.env')
+    # Ищем .env в текущей директории (app)
+    env_path = os.path.join(os.path.dirname(__file__), '.env')
+    return os.path.exists(env_path)
 
 def load_env():
     """Загружает существующие значения из .env"""
     env_vars = {}
-    if check_env_exists():
+    # Ищем .env в текущей директории (app)
+    env_path = os.path.join(os.path.dirname(__file__), '.env')
+    if os.path.exists(env_path):
         try:
-            with open('.env', 'r', encoding='utf-8') as f:
+            with open(env_path, 'r', encoding='utf-8') as f:
                 for line in f:
                     line = line.strip()
                     if line and not line.startswith('#') and '=' in line:
@@ -27,7 +31,9 @@ def load_env():
 def save_env(env_vars):
     """Сохраняет переменные в .env файл"""
     try:
-        with open('.env', 'w', encoding='utf-8') as f:
+        # Сохраняем .env в текущей директории (app)
+        env_path = os.path.join(os.path.dirname(__file__), '.env')
+        with open(env_path, 'w', encoding='utf-8') as f:
             f.write("# Настройки для API 1C\n")
             f.write(f"LOGIN={env_vars.get('LOGIN', '')}\n")
             f.write(f"PASSWORD={env_vars.get('PASSWORD', '')}\n")

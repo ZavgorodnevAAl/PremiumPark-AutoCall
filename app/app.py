@@ -130,6 +130,7 @@ def save_blacklist(blacklist_list):
 
 def load_env():
     """Загружает переменные из .env файла"""
+    # Ищем .env в текущей директории (app)
     env_file = os.path.join(os.path.dirname(__file__), '.env')
     env_vars = {}
     if os.path.exists(env_file):
@@ -152,6 +153,7 @@ def load_env():
 
 def save_env(env_vars):
     """Сохраняет переменные в .env файл"""
+    # Сохраняем .env в текущей директории (app)
     env_file = os.path.join(os.path.dirname(__file__), '.env')
     try:
         with open(env_file, 'w', encoding='utf-8') as f:

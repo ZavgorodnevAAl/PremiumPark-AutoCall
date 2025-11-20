@@ -10,7 +10,12 @@ from dotenv import load_dotenv
 import time
 
 # Загружаем переменные окружения
-load_dotenv(override=True)
+# Ищем .env в текущей директории (app)
+env_path = os.path.join(os.path.dirname(__file__), '.env')
+if os.path.exists(env_path):
+    load_dotenv(dotenv_path=env_path, override=True)
+else:
+    load_dotenv(override=True)  # Fallback на поиск в текущей директории
 
 def send_whatsapp_message(recipient: str, message: str):
     """

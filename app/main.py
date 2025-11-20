@@ -14,7 +14,12 @@ from datetime import datetime
 import sys
 
 # Загружаем переменные окружения
-load_dotenv(override=True)
+# Ищем .env в текущей директории (app)
+env_path = os.path.join(os.path.dirname(__file__), '.env')
+if os.path.exists(env_path):
+    load_dotenv(dotenv_path=env_path, override=True)
+else:
+    load_dotenv(override=True)  # Fallback на поиск в текущей директории
 
 # Настройки для API 1C
 LOGIN = os.getenv('LOGIN')
