@@ -317,17 +317,24 @@ def send_morning_reminder():
         messages = load_messages()
         message = messages.get("morning", "")
         
-        print(f"📤 Отправляем сообщения {len(filtered_drivers)} водителям (баланс < {threshold})...")
-        for driver in filtered_drivers:
+        total = len(filtered_drivers)
+        print(f"📤 Отправляем сообщения {total} водителям (баланс < {threshold})...")
+        sent = 0
+        for idx, driver in enumerate(filtered_drivers, 1):
             try:
-                print(f"  → {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']}")
-                send_whatsapp_message(driver['phone'], message)
+                print(f"  → [{idx}/{total}] {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']}")
+                if send_whatsapp_message(driver['phone'], message):
+                    sent += 1
+                remaining = total - idx
+                print(f"     📊 Отправлено: {sent}/{total}, Осталось: {remaining}")
                 time.sleep(1)  # Небольшая задержка между отправками
             except Exception as e:
                 print(f"  ❌ Ошибка при отправке {driver['fio']}: {e}")
+                remaining = total - idx
+                print(f"     📊 Отправлено: {sent}/{total}, Осталось: {remaining}")
                 continue  # Продолжаем отправку остальным
         
-        print(f"✅ Утреннее напоминание завершено\n")
+        print(f"✅ Утреннее напоминание завершено. Всего отправлено: {sent}/{total}\n")
     except Exception as e:
         print(f"❌ Критическая ошибка в send_morning_reminder: {e}")
         import traceback
@@ -360,17 +367,24 @@ def send_weekday_afternoon_reminder():
         messages = load_messages()
         message = messages.get("weekday_afternoon", "")
         
-        print(f"📤 Отправляем сообщения {len(filtered_drivers)} водителям (баланс < {threshold})...")
-        for driver in filtered_drivers:
+        total = len(filtered_drivers)
+        print(f"📤 Отправляем сообщения {total} водителям (баланс < {threshold})...")
+        sent = 0
+        for idx, driver in enumerate(filtered_drivers, 1):
             try:
-                print(f"  → {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']}")
-                send_whatsapp_message(driver['phone'], message)
+                print(f"  → [{idx}/{total}] {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']}")
+                if send_whatsapp_message(driver['phone'], message):
+                    sent += 1
+                remaining = total - idx
+                print(f"     📊 Отправлено: {sent}/{total}, Осталось: {remaining}")
                 time.sleep(1)
             except Exception as e:
                 print(f"  ❌ Ошибка при отправке {driver['fio']}: {e}")
+                remaining = total - idx
+                print(f"     📊 Отправлено: {sent}/{total}, Осталось: {remaining}")
                 continue  # Продолжаем отправку остальным
         
-        print(f"✅ Напоминание в будний день завершено\n")
+        print(f"✅ Напоминание в будний день завершено. Всего отправлено: {sent}/{total}\n")
     except Exception as e:
         print(f"❌ Критическая ошибка в send_weekday_afternoon_reminder: {e}")
         import traceback
@@ -403,17 +417,24 @@ def send_weekend_afternoon_reminder():
         messages = load_messages()
         message = messages.get("weekend_afternoon", "")
         
-        print(f"📤 Отправляем сообщения {len(filtered_drivers)} водителям (баланс < {threshold})...")
-        for driver in filtered_drivers:
+        total = len(filtered_drivers)
+        print(f"📤 Отправляем сообщения {total} водителям (баланс < {threshold})...")
+        sent = 0
+        for idx, driver in enumerate(filtered_drivers, 1):
             try:
-                print(f"  → {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']}")
-                send_whatsapp_message(driver['phone'], message)
+                print(f"  → [{idx}/{total}] {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']}")
+                if send_whatsapp_message(driver['phone'], message):
+                    sent += 1
+                remaining = total - idx
+                print(f"     📊 Отправлено: {sent}/{total}, Осталось: {remaining}")
                 time.sleep(1)
             except Exception as e:
                 print(f"  ❌ Ошибка при отправке {driver['fio']}: {e}")
+                remaining = total - idx
+                print(f"     📊 Отправлено: {sent}/{total}, Осталось: {remaining}")
                 continue  # Продолжаем отправку остальным
         
-        print(f"✅ Напоминание в выходной день завершено\n")
+        print(f"✅ Напоминание в выходной день завершено. Всего отправлено: {sent}/{total}\n")
     except Exception as e:
         print(f"❌ Критическая ошибка в send_weekend_afternoon_reminder: {e}")
         import traceback

@@ -228,6 +228,60 @@ def run_scheduler():
     scheduler_state = get_scheduler_state()
     setup_schedule()
     
+    # Функция для вывода времени до следующего запуска
+    def print_next_run_info():
+        """Выводит информацию о времени до следующего запуска"""
+        while True:
+            try:
+                with scheduler_state['lock']:
+                    if not scheduler_state['running']:
+                        break
+                
+                jobs = schedule.jobs
+                if jobs:
+                    next_runs = sorted([job.next_run for job in jobs if job.next_run])
+                    if next_runs:
+                        nearest = next_runs[0]
+                        now = datetime.now()
+                        time_until = nearest - now
+                        
+                        if time_until.total_seconds() > 0:
+                            # Форматируем время до запуска
+                            total_seconds = int(time_until.total_seconds())
+                            days = total_seconds // 86400
+                            hours = (total_seconds % 86400) // 3600
+                            minutes = (total_seconds % 3600) // 60
+                            seconds = total_seconds % 60
+                            
+                            if days > 0:
+                                time_str = f"{days} дн. {hours} ч. {minutes} мин. {seconds} сек."
+                            elif hours > 0:
+                                time_str = f"{hours} ч. {minutes} мин. {seconds} сек."
+                            elif minutes > 0:
+                                time_str = f"{minutes} мин. {seconds} сек."
+                            else:
+                                time_str = f"{seconds} сек."
+                            
+                            print(f"[ПЛАНИРОВЩИК] До следующего запуска: {time_str} (запуск в {nearest.strftime('%d.%m.%Y %H:%M:%S')})")
+                        else:
+                            print(f"[ПЛАНИРОВЩИК] Следующий запуск: {nearest.strftime('%d.%m.%Y %H:%M:%S')} (скоро)")
+                else:
+                    print("[ПЛАНИРОВЩИК] Нет запланированных задач")
+                
+                # Ждем 30 секунд
+                for _ in range(30):
+                    time.sleep(1)
+                    with scheduler_state['lock']:
+                        if not scheduler_state['running']:
+                            return
+            except Exception as e:
+                print(f"[ПЛАНИРОВЩИК] Ошибка при выводе информации: {e}")
+                time.sleep(30)
+    
+    # Запускаем поток для вывода информации
+    info_thread = threading.Thread(target=print_next_run_info, daemon=True)
+    info_thread.start()
+    
     while True:
         try:
             with scheduler_state['lock']:
