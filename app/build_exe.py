@@ -7,11 +7,20 @@ import subprocess
 import sys
 import os
 import platform
+import logging
+
+# Настройка логгера
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
 
 def build_exe():
     """Создает .exe файл с помощью PyInstaller"""
-    print("🔨 Начинаем сборку .exe файла...")
-    print("⚠️  Убедитесь, что установлен PyInstaller: pip install pyinstaller\n")
+    logger.info("Начинаем сборку .exe файла...")
+    logger.info("Убедитесь, что установлен PyInstaller: pip install pyinstaller\n")
     
     # Определяем разделитель для --add-data в зависимости от ОС
     sep = ";" if platform.system() == "Windows" else ":"
@@ -35,27 +44,27 @@ def build_exe():
         "launcher.py"
     ]
     
-    print("Выполняется команда:")
-    print(" ".join(cmd))
-    print()
+    logger.info("Выполняется команда:")
+    logger.info(" ".join(cmd))
+    logger.info("")
     
     try:
         subprocess.run(cmd, check=True)
-        print("\n✅ Сборка завершена!")
-        print("📦 .exe файл находится в папке dist/PremiumPark.exe")
-        print("\n⚠️  ВАЖНО:")
-        print("   - Файлы messages.json и settings.json должны быть рядом с .exe")
-        print("   - Файл .env должен быть рядом с .exe")
-        print("   - При первом запуске может потребоваться время на инициализацию")
-        print("   - Размер .exe файла может быть большим (100+ МБ) из-за включения всех зависимостей")
+        logger.info("\nСборка завершена!")
+        logger.info(".exe файл находится в папке dist/PremiumPark.exe")
+        logger.info("\nВАЖНО:")
+        logger.info("   - Файлы messages.json и settings.json должны быть рядом с .exe")
+        logger.info("   - Файл .env должен быть рядом с .exe")
+        logger.info("   - При первом запуске может потребоваться время на инициализацию")
+        logger.info("   - Размер .exe файла может быть большим (100+ МБ) из-за включения всех зависимостей")
     except subprocess.CalledProcessError as e:
-        print(f"\n❌ Ошибка при сборке: {e}")
-        print("\nПопробуйте установить PyInstaller:")
-        print("  pip install pyinstaller")
+        logger.error(f"\nОшибка при сборке: {e}")
+        logger.error("\nПопробуйте установить PyInstaller:")
+        logger.error("  pip install pyinstaller")
     except FileNotFoundError:
-        print("\n❌ PyInstaller не найден!")
-        print("Установите его командой:")
-        print("  pip install pyinstaller")
+        logger.error("\nPyInstaller не найден!")
+        logger.error("Установите его командой:")
+        logger.error("  pip install pyinstaller")
 
 if __name__ == "__main__":
     build_exe()

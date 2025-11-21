@@ -5,6 +5,15 @@
 import subprocess
 import sys
 import os
+import logging
+
+# Настройка логгера
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
 
 def main():
     """Запускает Streamlit приложение"""
@@ -14,31 +23,31 @@ def main():
     
     # Проверяем наличие app.py
     if not os.path.exists(app_path):
-        print(f"❌ Ошибка: файл app.py не найден в {script_dir}")
+        logger.error(f"Ошибка: файл app.py не найден в {script_dir}")
         input("\nНажмите Enter для выхода...")
         return
     
-    print("🚗 Запуск Premium Park - Автоматические напоминания...")
-    print("📱 Откроется браузер с веб-интерфейсом")
-    print("⏹️  Для остановки нажмите Ctrl+C\n")
+    logger.info("Запуск Premium Park - Автоматические напоминания...")
+    logger.info("Откроется браузер с веб-интерфейсом")
+    logger.info("Для остановки нажмите Ctrl+C\n")
     
     try:
         # Запускаем Streamlit
         subprocess.run([sys.executable, "-m", "streamlit", "run", app_path], check=True)
     except KeyboardInterrupt:
-        print("\n\n👋 Приложение остановлено")
+        logger.info("\n\nПриложение остановлено")
     except subprocess.CalledProcessError as e:
-        print(f"\n❌ Ошибка при запуске: {e}")
-        print("\nВозможные причины:")
-        print("  - Streamlit не установлен: pip install streamlit")
-        print("  - Проблемы с зависимостями: pip install -r requirements.txt")
+        logger.error(f"\nОшибка при запуске: {e}")
+        logger.error("\nВозможные причины:")
+        logger.error("  - Streamlit не установлен: pip install streamlit")
+        logger.error("  - Проблемы с зависимостями: pip install -r requirements.txt")
         input("\nНажмите Enter для выхода...")
     except FileNotFoundError:
-        print("\n❌ Ошибка: Python не найден!")
-        print("Убедитесь, что Python установлен и добавлен в PATH")
+        logger.error("\nОшибка: Python не найден!")
+        logger.error("Убедитесь, что Python установлен и добавлен в PATH")
         input("\nНажмите Enter для выхода...")
     except Exception as e:
-        print(f"\n❌ Неожиданная ошибка: {e}")
+        logger.error(f"\nНеожиданная ошибка: {e}")
         input("\nНажмите Enter для выхода...")
 
 if __name__ == "__main__":

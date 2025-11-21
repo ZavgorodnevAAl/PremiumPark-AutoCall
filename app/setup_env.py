@@ -4,6 +4,15 @@
 """
 import os
 import sys
+import logging
+
+# Настройка логгера
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
 
 def check_env_exists():
     """Проверяет существование .env файла"""
@@ -46,7 +55,7 @@ def save_env(env_vars):
             f.write(f"TEST_PHONE={env_vars.get('TEST_PHONE', '')}\n")
         return True
     except Exception as e:
-        print(f"❌ Ошибка при сохранении .env: {e}")
+        logger.error(f"Ошибка при сохранении .env: {e}")
         return False
 
 def is_env_complete(env_vars):
@@ -56,16 +65,16 @@ def is_env_complete(env_vars):
 
 def setup_env_interactive():
     """Интерактивная настройка .env"""
-    print("\n" + "="*60)
-    print("⚙️  Настройка переменных окружения (.env)")
-    print("="*60)
-    print("\nЗаполните следующие данные:\n")
+    logger.info("\n" + "="*60)
+    logger.info("Настройка переменных окружения (.env)")
+    logger.info("="*60)
+    logger.info("\nЗаполните следующие данные:\n")
     
     env_vars = load_env()
     
     # Данные для API 1C
-    print("📋 Данные для API 1C:")
-    print("-" * 60)
+    logger.info("Данные для API 1C:")
+    logger.info("-" * 60)
     
     current_login = env_vars.get('LOGIN', '')
     if current_login:
@@ -85,11 +94,11 @@ def setup_env_interactive():
         password = input("Пароль для API 1C: ").strip()
     env_vars['PASSWORD'] = password
     
-    print()
+    logger.info("")
     
     # Данные для WhatsApp API
-    print("📱 Данные для WhatsApp API (wappi.pro):")
-    print("-" * 60)
+    logger.info("Данные для WhatsApp API (wappi.pro):")
+    logger.info("-" * 60)
     
     current_profile_id = env_vars.get('PROFILE_ID', '')
     if current_profile_id:
@@ -109,11 +118,11 @@ def setup_env_interactive():
         authorization = input("AUTHORIZATION (токен): ").strip()
     env_vars['AUTHORIZATION'] = authorization
     
-    print()
+    logger.info("")
     
     # Тестовый номер (опционально)
-    print("🧪 Тестовый номер (опционально):")
-    print("-" * 60)
+    logger.info("Тестовый номер (опционально):")
+    logger.info("-" * 60)
     
     current_test_phone = env_vars.get('TEST_PHONE', '')
     if current_test_phone:
@@ -124,23 +133,23 @@ def setup_env_interactive():
         test_phone = input("TEST_PHONE (можно оставить пустым): ").strip()
     env_vars['TEST_PHONE'] = test_phone
     
-    print()
+    logger.info("")
     
     # Проверка обязательных полей
     if not is_env_complete(env_vars):
-        print("⚠️  Внимание: не все обязательные поля заполнены!")
-        print("Обязательные поля: LOGIN, PASSWORD, PROFILE_ID, AUTHORIZATION")
+        logger.warning("Внимание: не все обязательные поля заполнены!")
+        logger.warning("Обязательные поля: LOGIN, PASSWORD, PROFILE_ID, AUTHORIZATION")
         response = input("\nПродолжить сохранение? (y/n): ").strip().lower()
         if response != 'y':
-            print("❌ Отменено")
+            logger.info("Отменено")
             return False
     
     # Сохранение
     if save_env(env_vars):
-        print("\n✅ Файл .env успешно сохранен!")
+        logger.info("\nФайл .env успешно сохранен!")
         return True
     else:
-        print("\n❌ Ошибка при сохранении .env")
+        logger.error("\nОшибка при сохранении .env")
         return False
 
 def main():

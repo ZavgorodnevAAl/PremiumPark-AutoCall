@@ -8,6 +8,15 @@ import requests
 import json
 from dotenv import load_dotenv
 import time
+import logging
+
+# Настройка логгера
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
 
 # Загружаем переменные окружения
 # Ищем .env в текущей директории (app)
@@ -28,14 +37,13 @@ def send_whatsapp_message(recipient: str, message: str):
     # Получаем данные из .env
     profile_id = os.getenv("PROFILE_ID")
     authorization = os.getenv("AUTHORIZATION")
-    print(profile_id, authorization)
+    logger.debug(f"Profile ID: {profile_id}, Authorization: {authorization[:20] if authorization else None}...")
     
     if not profile_id or not authorization:
-        print("""❌ Ошибка: PROFILE_ID или AUTHORIZATION не найдены в .env файле
-        Создайте файл .env с содержимым:
-        PROFILE_ID=ваш_profile_id
-        AUTHORIZATION=ваш_токен_авторизации
-        """)
+        logger.error("Ошибка: PROFILE_ID или AUTHORIZATION не найдены в .env файле")
+        logger.error("Создайте файл .env с содержимым:")
+        logger.error("PROFILE_ID=ваш_profile_id")
+        logger.error("AUTHORIZATION=ваш_токен_авторизации")
         return
     
     # URL для API
@@ -55,19 +63,19 @@ def send_whatsapp_message(recipient: str, message: str):
     }
     
     try:
-        print(f"📤 Отправляем сообщение на номер {recipient}...")
+        logger.info(f"Отправляем сообщение на номер {recipient}...")
         response = requests.post(url, headers=headers, json=data)
         
         if response.status_code == 200:
-            print("✅ Сообщение отправлено успешно!")
+            logger.info("Сообщение отправлено успешно!")
             result = response.json()
-            print(f"Ответ API: {json.dumps(result, indent=2, ensure_ascii=False)}")
+            logger.debug(f"Ответ API: {json.dumps(result, indent=2, ensure_ascii=False)}")
         else:
-            print(f"❌ Ошибка API: {response.status_code}")
-            print(f"Ответ: {response.text}")
+            logger.error(f"Ошибка API: {response.status_code}")
+            logger.error(f"Ответ: {response.text}")
             
     except Exception as e:
-        print(f"❌ Ошибка при отправке: {e}")
+        logger.error(f"Ошибка при отправке: {e}")
 
 if __name__ == "__main__":
     # Пример использования

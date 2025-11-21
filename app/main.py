@@ -12,6 +12,15 @@ import schedule
 import time
 from datetime import datetime
 import sys
+import logging
+
+# Настройка логгера
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
 
 # Загружаем переменные окружения
 # Ищем .env в текущей директории (app)
@@ -33,11 +42,11 @@ AUTHORIZATION = os.getenv("AUTHORIZATION")
 TEST_PHONE = os.getenv("TEST_PHONE", "")
 
 if not LOGIN or not PASSWORD:
-    print('❌ Ошибка: не заданы LOGIN или PASSWORD в .env файле')
+    logger.error('Ошибка: не заданы LOGIN или PASSWORD в .env файле')
     sys.exit(1)
 
 if not PROFILE_ID or not AUTHORIZATION:
-    print('❌ Ошибка: не заданы PROFILE_ID или AUTHORIZATION в .env файле')
+    logger.error('Ошибка: не заданы PROFILE_ID или AUTHORIZATION в .env файле')
     sys.exit(1)
 
 
@@ -74,11 +83,11 @@ def get_drivers():
         if response.status_code == 200:
             return response.json()
         else:
-            print(f'❌ Ошибка при получении данных: {response.status_code}')
-            print(f'Ответ: {response.text[:200]}')
+            logger.error(f'Ошибка при получении данных: {response.status_code}')
+            logger.error(f'Ответ: {response.text[:200]}')
             return []
     except Exception as e:
-        print(f'❌ Ошибка при получении данных: {e}')
+        logger.error(f'Ошибка при получении данных: {e}')
         return []
 
 
@@ -133,7 +142,7 @@ def send_whatsapp_message(recipient: str, message: str) -> bool:
         bool: True если сообщение отправлено успешно
     """
     if not recipient:
-        print("❌ Номер получателя не указан")
+        logger.error("Номер получателя не указан")
         return False
     
     url = f"https://wappi.pro/api/sync/message/send?profile_id={PROFILE_ID}"
@@ -153,15 +162,15 @@ def send_whatsapp_message(recipient: str, message: str) -> bool:
         response = requests.post(url, headers=headers, json=data, timeout=30)
         
         if response.status_code == 200:
-            print(f"✅ Сообщение отправлено на {recipient}")
+            logger.info(f"Сообщение отправлено на {recipient}")
             return True
         else:
-            print(f"❌ Ошибка API для {recipient}: {response.status_code}")
-            print(f"Ответ: {response.text[:200]}")
+            logger.error(f"Ошибка API для {recipient}: {response.status_code}")
+            logger.error(f"Ответ: {response.text[:200]}")
             return False
             
     except Exception as e:
-        print(f"❌ Ошибка при отправке на {recipient}: {e}")
+        logger.error(f"Ошибка при отправке на {recipient}: {e}")
         return False
 
 
@@ -186,9 +195,9 @@ def load_messages():
         try:
             with open(messages_file, 'w', encoding='utf-8') as f:
                 json.dump(default_messages, f, ensure_ascii=False, indent=2)
-            print(f"✅ Создан файл шаблонов сообщений {messages_file} со стандартными значениями")
+            logger.info(f"Создан файл шаблонов сообщений {messages_file} со стандартными значениями")
         except Exception as e:
-            print(f"❌ Ошибка при создании файла шаблонов сообщений: {e}")
+            logger.error(f"Ошибка при создании файла шаблонов сообщений: {e}")
             return default_messages
     
     # Загружаем шаблоны из файла
@@ -196,7 +205,7 @@ def load_messages():
         with open(messages_file, 'r', encoding='utf-8') as f:
             return json.load(f)
     except Exception as e:
-        print(f"❌ Ошибка при загрузке шаблонов сообщений: {e}")
+        logger.error(f"Ошибка при загрузке шаблонов сообщений: {e}")
         # Возвращаем шаблоны по умолчанию
         return default_messages
 
@@ -226,9 +235,9 @@ def load_settings():
         try:
             with open(settings_file, 'w', encoding='utf-8') as f:
                 json.dump(default_settings, f, ensure_ascii=False, indent=2)
-            print(f"✅ Создан файл настроек {settings_file} со стандартными значениями")
+            logger.info(f"Создан файл настроек {settings_file} со стандартными значениями")
         except Exception as e:
-            print(f"❌ Ошибка при создании файла настроек: {e}")
+            logger.error(f"Ошибка при создании файла настроек: {e}")
             return default_settings
     
     # Загружаем настройки из файла
@@ -241,7 +250,7 @@ def load_settings():
                     loaded_settings[key] = value
             return loaded_settings
     except Exception as e:
-        print(f"❌ Ошибка при загрузке настроек: {e}")
+        logger.error(f"Ошибка при загрузке настроек: {e}")
         # Возвращаем настройки по умолчанию
         return default_settings
 
@@ -276,7 +285,7 @@ def load_blacklist():
                         })
             return result
     except Exception as e:
-        print(f"❌ Ошибка при загрузке черного списка: {e}")
+        logger.error(f"Ошибка при загрузке черного списка: {e}")
         return []
 
 
@@ -299,44 +308,44 @@ def send_morning_reminder():
         settings = load_settings()
         threshold = float(settings.get("morning_balance_threshold", 0))
         
-        print(f"\n{'='*60}")
-        print(f"🌅 Утреннее напоминание - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"{'='*60}")
+        logger.info(f"\n{'='*60}")
+        logger.info(f"Утреннее напоминание - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"{'='*60}")
         
         drivers = get_drivers()
         if not drivers:
-            print("❌ Не удалось получить данные о водителях")
+            logger.error("Не удалось получить данные о водителях")
             return
         
         filtered_drivers = filter_drivers(drivers, balance_threshold=threshold)
         
         if not filtered_drivers:
-            print(f"✅ Нет водителей с балансом < {threshold}")
+            logger.info(f"Нет водителей с балансом < {threshold}")
             return
         
         messages = load_messages()
         message = messages.get("morning", "")
         
         total = len(filtered_drivers)
-        print(f"📤 Отправляем сообщения {total} водителям (баланс < {threshold})...")
+        logger.info(f"Отправляем сообщения {total} водителям (баланс < {threshold})...")
         sent = 0
         for idx, driver in enumerate(filtered_drivers, 1):
             try:
-                print(f"  → [{idx}/{total}] {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']}")
+                logger.info(f"[{idx}/{total}] {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']}")
                 if send_whatsapp_message(driver['phone'], message):
                     sent += 1
                 remaining = total - idx
-                print(f"     📊 Отправлено: {sent}/{total}, Осталось: {remaining}")
+                logger.info(f"Отправлено: {sent}/{total}, Осталось: {remaining}")
                 time.sleep(1)  # Небольшая задержка между отправками
             except Exception as e:
-                print(f"  ❌ Ошибка при отправке {driver['fio']}: {e}")
+                logger.error(f"Ошибка при отправке {driver['fio']}: {e}")
                 remaining = total - idx
-                print(f"     📊 Отправлено: {sent}/{total}, Осталось: {remaining}")
+                logger.info(f"Отправлено: {sent}/{total}, Осталось: {remaining}")
                 continue  # Продолжаем отправку остальным
         
-        print(f"✅ Утреннее напоминание завершено. Всего отправлено: {sent}/{total}\n")
+        logger.info(f"Утреннее напоминание завершено. Всего отправлено: {sent}/{total}\n")
     except Exception as e:
-        print(f"❌ Критическая ошибка в send_morning_reminder: {e}")
+        logger.error(f"Критическая ошибка в send_morning_reminder: {e}")
         import traceback
         traceback.print_exc()
 
@@ -349,44 +358,44 @@ def send_weekday_afternoon_reminder():
         settings = load_settings()
         threshold = float(settings.get("afternoon_balance_threshold", -500))
         
-        print(f"\n{'='*60}")
-        print(f"📅 Напоминание в будний день - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"{'='*60}")
+        logger.info(f"\n{'='*60}")
+        logger.info(f"Напоминание в будний день - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"{'='*60}")
         
         drivers = get_drivers()
         if not drivers:
-            print("❌ Не удалось получить данные о водителях")
+            logger.error("Не удалось получить данные о водителях")
             return
         
         filtered_drivers = filter_drivers(drivers, balance_threshold=threshold)
         
         if not filtered_drivers:
-            print(f"✅ Нет водителей с балансом < {threshold}")
+            logger.info(f"Нет водителей с балансом < {threshold}")
             return
         
         messages = load_messages()
         message = messages.get("weekday_afternoon", "")
         
         total = len(filtered_drivers)
-        print(f"📤 Отправляем сообщения {total} водителям (баланс < {threshold})...")
+        logger.info(f"Отправляем сообщения {total} водителям (баланс < {threshold})...")
         sent = 0
         for idx, driver in enumerate(filtered_drivers, 1):
             try:
-                print(f"  → [{idx}/{total}] {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']}")
+                logger.info(f"[{idx}/{total}] {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']}")
                 if send_whatsapp_message(driver['phone'], message):
                     sent += 1
                 remaining = total - idx
-                print(f"     📊 Отправлено: {sent}/{total}, Осталось: {remaining}")
+                logger.info(f"Отправлено: {sent}/{total}, Осталось: {remaining}")
                 time.sleep(1)
             except Exception as e:
-                print(f"  ❌ Ошибка при отправке {driver['fio']}: {e}")
+                logger.error(f"Ошибка при отправке {driver['fio']}: {e}")
                 remaining = total - idx
-                print(f"     📊 Отправлено: {sent}/{total}, Осталось: {remaining}")
+                logger.info(f"Отправлено: {sent}/{total}, Осталось: {remaining}")
                 continue  # Продолжаем отправку остальным
         
-        print(f"✅ Напоминание в будний день завершено. Всего отправлено: {sent}/{total}\n")
+        logger.info(f"Напоминание в будний день завершено. Всего отправлено: {sent}/{total}\n")
     except Exception as e:
-        print(f"❌ Критическая ошибка в send_weekday_afternoon_reminder: {e}")
+        logger.error(f"Критическая ошибка в send_weekday_afternoon_reminder: {e}")
         import traceback
         traceback.print_exc()
 
@@ -399,44 +408,44 @@ def send_weekend_afternoon_reminder():
         settings = load_settings()
         threshold = float(settings.get("afternoon_balance_threshold", -500))
         
-        print(f"\n{'='*60}")
-        print(f"🏖️ Напоминание в выходной день - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"{'='*60}")
+        logger.info(f"\n{'='*60}")
+        logger.info(f"Напоминание в выходной день - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"{'='*60}")
         
         drivers = get_drivers()
         if not drivers:
-            print("❌ Не удалось получить данные о водителях")
+            logger.error("Не удалось получить данные о водителях")
             return
         
         filtered_drivers = filter_drivers(drivers, balance_threshold=threshold)
         
         if not filtered_drivers:
-            print(f"✅ Нет водителей с балансом < {threshold}")
+            logger.info(f"Нет водителей с балансом < {threshold}")
             return
         
         messages = load_messages()
         message = messages.get("weekend_afternoon", "")
         
         total = len(filtered_drivers)
-        print(f"📤 Отправляем сообщения {total} водителям (баланс < {threshold})...")
+        logger.info(f"Отправляем сообщения {total} водителям (баланс < {threshold})...")
         sent = 0
         for idx, driver in enumerate(filtered_drivers, 1):
             try:
-                print(f"  → [{idx}/{total}] {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']}")
+                logger.info(f"[{idx}/{total}] {driver['fio']} ({driver['phone']}) - Баланс: {driver['balance']}")
                 if send_whatsapp_message(driver['phone'], message):
                     sent += 1
                 remaining = total - idx
-                print(f"     📊 Отправлено: {sent}/{total}, Осталось: {remaining}")
+                logger.info(f"Отправлено: {sent}/{total}, Осталось: {remaining}")
                 time.sleep(1)
             except Exception as e:
-                print(f"  ❌ Ошибка при отправке {driver['fio']}: {e}")
+                logger.error(f"Ошибка при отправке {driver['fio']}: {e}")
                 remaining = total - idx
-                print(f"     📊 Отправлено: {sent}/{total}, Осталось: {remaining}")
+                logger.info(f"Отправлено: {sent}/{total}, Осталось: {remaining}")
                 continue  # Продолжаем отправку остальным
         
-        print(f"✅ Напоминание в выходной день завершено. Всего отправлено: {sent}/{total}\n")
+        logger.info(f"Напоминание в выходной день завершено. Всего отправлено: {sent}/{total}\n")
     except Exception as e:
-        print(f"❌ Критическая ошибка в send_weekend_afternoon_reminder: {e}")
+        logger.error(f"Критическая ошибка в send_weekend_afternoon_reminder: {e}")
         import traceback
         traceback.print_exc()
 
@@ -459,7 +468,7 @@ def get_morning_recipients():
         filtered_drivers = filter_drivers(drivers, balance_threshold=threshold)
         return filtered_drivers
     except Exception as e:
-        print(f"❌ Ошибка при получении списка получателей утреннего напоминания: {e}")
+        logger.error(f"Ошибка при получении списка получателей утреннего напоминания: {e}")
         return []
 
 
@@ -481,7 +490,7 @@ def get_weekday_afternoon_recipients():
         filtered_drivers = filter_drivers(drivers, balance_threshold=threshold)
         return filtered_drivers
     except Exception as e:
-        print(f"❌ Ошибка при получении списка получателей напоминания в будний день: {e}")
+        logger.error(f"Ошибка при получении списка получателей напоминания в будний день: {e}")
         return []
 
 
@@ -503,7 +512,7 @@ def get_weekend_afternoon_recipients():
         filtered_drivers = filter_drivers(drivers, balance_threshold=threshold)
         return filtered_drivers
     except Exception as e:
-        print(f"❌ Ошибка при получении списка получателей напоминания в выходной день: {e}")
+        logger.error(f"Ошибка при получении списка получателей напоминания в выходной день: {e}")
         return []
 
 
@@ -585,7 +594,7 @@ def get_filtered_drivers_info(balance_threshold: float):
         
         return filtered_info
     except Exception as e:
-        print(f"❌ Ошибка при получении информации об отфильтрованных водителях: {e}")
+        logger.error(f"Ошибка при получении информации об отфильтрованных водителях: {e}")
         return {
             'blacklist': [],
             'not_working': [],
@@ -605,24 +614,24 @@ def send_test_message(phone: str = None):
         phone = TEST_PHONE
     
     if not phone:
-        print("❌ Не указан номер телефона для теста")
-        print("   Укажите номер в параметре функции или в .env как TEST_PHONE")
+        logger.error("Не указан номер телефона для теста")
+        logger.error("   Укажите номер в параметре функции или в .env как TEST_PHONE")
         return
     
     phone_normalized = normalize_phone(phone)
     
     message = "Тестовое сообщение от системы автоматических напоминаний Premium Park"
     
-    print(f"\n{'='*60}")
-    print(f"🧪 Тестовая отправка - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"{'='*60}")
-    print(f"📤 Отправляем тестовое сообщение на {phone_normalized}...")
+    logger.info(f"\n{'='*60}")
+    logger.info(f"Тестовая отправка - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info(f"{'='*60}")
+    logger.info(f"Отправляем тестовое сообщение на {phone_normalized}...")
     
     if send_whatsapp_message(phone_normalized, message):
-        print("✅ Тестовое сообщение отправлено успешно!")
+        logger.info("Тестовое сообщение отправлено успешно!")
     else:
-        print("❌ Ошибка при отправке тестового сообщения")
-    print()
+        logger.error("Ошибка при отправке тестового сообщения")
+    logger.info("")
 
 
 def setup_scheduler():
@@ -682,10 +691,10 @@ def setup_scheduler():
     weekday_days_str = ", ".join([day_names.get(d, str(d)) for d in sorted(weekday_afternoon_days)])
     weekend_days_str = ", ".join([day_names.get(d, str(d)) for d in sorted(weekend_afternoon_days)])
     
-    print("✅ Планировщик задач настроен:")
-    print(f"   - Утреннее напоминание: {morning_days_str} в {morning_time} (баланс < {settings.get('morning_balance_threshold', 0)})")
-    print(f"   - Напоминание в будни: {weekday_days_str} в {afternoon_time} (баланс < {settings.get('afternoon_balance_threshold', -500)})")
-    print(f"   - Напоминание в выходные: {weekend_days_str} в {afternoon_time} (баланс < {settings.get('afternoon_balance_threshold', -500)})")
+    logger.info("Планировщик задач настроен:")
+    logger.info(f"   - Утреннее напоминание: {morning_days_str} в {morning_time} (баланс < {settings.get('morning_balance_threshold', 0)})")
+    logger.info(f"   - Напоминание в будни: {weekday_days_str} в {afternoon_time} (баланс < {settings.get('afternoon_balance_threshold', -500)})")
+    logger.info(f"   - Напоминание в выходные: {weekend_days_str} в {afternoon_time} (баланс < {settings.get('afternoon_balance_threshold', -500)})")
 
 
 def main():
@@ -713,7 +722,7 @@ def main():
             send_weekend_afternoon_reminder()
             return
         elif command == "help":
-            print("""
+            logger.info("""
 Использование:
   python main.py              - Запуск планировщика задач
   python main.py test [номер] - Отправка тестового сообщения
@@ -726,16 +735,16 @@ def main():
     
     # Запуск планировщика
     setup_scheduler()
-    print(f"\n🔄 Планировщик запущен. Ожидание задач...")
-    print(f"   Текущее время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"   Для остановки нажмите Ctrl+C\n")
+    logger.info(f"\nПланировщик запущен. Ожидание задач...")
+    logger.info(f"   Текущее время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info(f"   Для остановки нажмите Ctrl+C\n")
     
     try:
         while True:
             schedule.run_pending()
             time.sleep(60)  # Проверяем каждую минуту
     except KeyboardInterrupt:
-        print("\n\n👋 Планировщик остановлен")
+        logger.info("\n\nПланировщик остановлен")
 
 
 if __name__ == "__main__":

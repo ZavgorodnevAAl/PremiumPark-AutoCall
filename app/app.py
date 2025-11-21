@@ -10,6 +10,15 @@ import threading
 import time
 from datetime import datetime, timedelta
 import schedule
+import logging
+
+# Настройка логгера
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
 from main import (
     send_morning_reminder,
     send_weekday_afternoon_reminder,
@@ -262,11 +271,11 @@ def run_scheduler():
                             else:
                                 time_str = f"{seconds} сек."
                             
-                            print(f"[ПЛАНИРОВЩИК] До следующего запуска: {time_str} (запуск в {nearest.strftime('%d.%m.%Y %H:%M:%S')})")
+                            logger.info(f"[ПЛАНИРОВЩИК] До следующего запуска: {time_str} (запуск в {nearest.strftime('%d.%m.%Y %H:%M:%S')})")
                         else:
-                            print(f"[ПЛАНИРОВЩИК] Следующий запуск: {nearest.strftime('%d.%m.%Y %H:%M:%S')} (скоро)")
+                            logger.info(f"[ПЛАНИРОВЩИК] Следующий запуск: {nearest.strftime('%d.%m.%Y %H:%M:%S')} (скоро)")
                 else:
-                    print("[ПЛАНИРОВЩИК] Нет запланированных задач")
+                    logger.info(f"[ПЛАНИРОВЩИК] Нет запланированных задач")
                 
                 # Ждем 30 секунд
                 for _ in range(30):
@@ -275,7 +284,7 @@ def run_scheduler():
                         if not scheduler_state['running']:
                             return
             except Exception as e:
-                print(f"[ПЛАНИРОВЩИК] Ошибка при выводе информации: {e}")
+                logger.error(f"[ПЛАНИРОВЩИК] Ошибка при выводе информации: {e}")
                 time.sleep(30)
     
     # Запускаем поток для вывода информации
@@ -291,7 +300,7 @@ def run_scheduler():
             time.sleep(60)
         except Exception as e:
             # Логируем ошибку, но продолжаем работу планировщика
-            print(f"[SCHEDULER ERROR] {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Ошибка в планировщике: {e}")
+            logger.error(f"[SCHEDULER ERROR] Ошибка в планировщике: {e}")
             import traceback
             traceback.print_exc()
             # Ждем минуту перед следующей попыткой
