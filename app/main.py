@@ -650,16 +650,20 @@ def setup_scheduler():
     weekday_afternoon_days = settings.get("weekday_afternoon_days", [0, 1, 2, 3, 4])
     weekend_afternoon_days = settings.get("weekend_afternoon_days", [5, 6])
     
-    # Маппинг дней недели на методы schedule
-    day_mapping = {
-        0: schedule.every().monday,
-        1: schedule.every().tuesday,
-        2: schedule.every().wednesday,
-        3: schedule.every().thursday,
-        4: schedule.every().friday,
-        5: schedule.every().saturday,
-        6: schedule.every().sunday
-    }
+    # Функция для получения метода планировщика по дню недели
+    # ВАЖНО: создаём НОВЫЙ объект schedule для каждой задачи!
+    def get_day_schedule(day):
+        """Возвращает новый объект schedule для указанного дня"""
+        day_methods = {
+            0: schedule.every().monday,
+            1: schedule.every().tuesday,
+            2: schedule.every().wednesday,
+            3: schedule.every().thursday,
+            4: schedule.every().friday,
+            5: schedule.every().saturday,
+            6: schedule.every().sunday
+        }
+        return day_methods.get(day)
     
     day_names = {
         0: "понедельник",
@@ -672,19 +676,25 @@ def setup_scheduler():
     }
     
     # Настраиваем утренние напоминания для выбранных дней
+    # ВАЖНО: создаём НОВЫЙ объект schedule для каждой задачи!
     for day in morning_days:
-        if day in day_mapping:
-            day_mapping[day].at(morning_time).do(send_morning_reminder)
+        day_schedule = get_day_schedule(day)
+        if day_schedule:
+            day_schedule.at(morning_time).do(send_morning_reminder)
     
     # Настраиваем дневные напоминания для будних дней
+    # ВАЖНО: создаём НОВЫЙ объект schedule для каждой задачи!
     for day in weekday_afternoon_days:
-        if day in day_mapping:
-            day_mapping[day].at(afternoon_time).do(send_weekday_afternoon_reminder)
+        day_schedule = get_day_schedule(day)
+        if day_schedule:
+            day_schedule.at(afternoon_time).do(send_weekday_afternoon_reminder)
     
     # Настраиваем дневные напоминания для выходных дней
+    # ВАЖНО: создаём НОВЫЙ объект schedule для каждой задачи!
     for day in weekend_afternoon_days:
-        if day in day_mapping:
-            day_mapping[day].at(afternoon_time).do(send_weekend_afternoon_reminder)
+        day_schedule = get_day_schedule(day)
+        if day_schedule:
+            day_schedule.at(afternoon_time).do(send_weekend_afternoon_reminder)
     
     # Формируем строки для вывода
     morning_days_str = ", ".join([day_names.get(d, str(d)) for d in sorted(morning_days)])
